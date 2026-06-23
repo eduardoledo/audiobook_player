@@ -12,59 +12,65 @@ class SeriesMappingScreen extends StatefulWidget {
 
 class _SeriesMappingScreenState extends State<SeriesMappingScreen> {
   final _storage = getIt<LibraryStorage>();
+  
   Map<String, List<String>> _rules = {};
+  List<String> _globalPatterns = [];
+  Map<String, String> _sagaCodes = {};
+  
   bool _isLoading = true;
 
+  // Controllers for Specific Rules
   final _seriesController = TextEditingController();
   final _patternController = TextEditingController();
+  
+  // Controllers for Global Patterns
+  final _globalPatternController = TextEditingController();
+  
+  // Controllers for Saga Codes
+  final _codeController = TextEditingController();
+  final _codeSagaController = TextEditingController();
+
+  // Controllers for Simulator
+  final _simTestController = TextEditingController();
+  final _simRegexController = TextEditingController();
+  String? _simError;
+  RegExpMatch? _simMatch;
 
   @override
   void initState() {
     super.initState();
-    _loadRules();
+    _loadAll();
   }
 
-  Future<void> _loadRules() async {
+  Future<void> _loadAll() async {
     final rules = await _storage.getSeriesMappingRules();
+    final globals = await _storage.getGlobalPatterns();
+    final codes = await _storage.getSagaCodes();
+    
     setState(() {
       _rules = rules;
+      _globalPatterns = globals;
+      _sagaCodes = codes;
       _isLoading = false;
     });
   }
 
-  Future<void> _saveRules() async {
-    await _storage.saveSeriesMappingRules(_rules);
+  // --- Specific Rules Logic ---
+  
+  void _saveRules() {
+    _storage.saveSeriesMappingRules(_rules);
   }
 
   void _addRule() {
     final series = _seriesController.text.trim();
     final pattern = _patternController.text.trim();
-
-    if (series.isEmpty || pattern.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter both series name and pattern')),
-      );
-      return;
-    }
-
-    try {
-      RegExp(pattern); // Validate regex
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid regular expression')),
-      );
-      return;
-    }
+    if (series.isEmpty || pattern.isEmpty) return;
+    try { RegExp(pattern); } catch (_) { return; }
 
     setState(() {
-      if (!_rules.containsKey(series)) {
-        _rules[series] = [];
-      }
-      if (!_rules[series]!.contains(pattern)) {
-        _rules[series]!.add(pattern);
-      }
+      if (!_rules.containsKey(series)) _rules[series] = [];
+      if (!_rules[series]!.contains(pattern)) _rules[series]!.add(pattern);
     });
-
     _seriesController.clear();
     _patternController.clear();
     _saveRules();
@@ -73,256 +79,467 @@ class _SeriesMappingScreenState extends State<SeriesMappingScreen> {
   void _removeRule(String series, String pattern) {
     setState(() {
       _rules[series]?.remove(pattern);
-      if (_rules[series]?.isEmpty ?? true) {
-        _rules.remove(series);
-      }
+      if (_rules[series]?.isEmpty ?? true) _rules.remove(series);
     });
     _saveRules();
   }
 
-  void _editSeriesName(String oldName) {
-    final controller = TextEditingController(text: oldName);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF252525),
-        title: const Text('Edit Saga Name', style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: controller,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
-            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFE8B86D))),
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-          TextButton(
-            onPressed: () {
-              final newName = controller.text.trim();
-              if (newName.isNotEmpty && newName != oldName) {
-                setState(() {
-                  final patterns = _rules.remove(oldName);
-                  if (patterns != null) {
-                    // Merge if the new name already exists
-                    if (_rules.containsKey(newName)) {
-                      _rules[newName]!.addAll(patterns);
-                      _rules[newName] = _rules[newName]!.toSet().toList(); // Remove duplicates
-                    } else {
-                      _rules[newName] = patterns;
-                    }
-                  }
-                });
-                _saveRules();
-              }
-              Navigator.pop(ctx);
-            },
-            child: const Text('Save', style: TextStyle(color: Color(0xFFE8B86D))),
-          ),
-        ],
-      ),
-    );
+  // --- Global Patterns Logic ---
+  
+  void _saveGlobals() {
+    _storage.saveGlobalPatterns(_globalPatterns);
   }
 
-  void _editPattern(String series, String oldPattern) {
-    final controller = TextEditingController(text: oldPattern);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF252525),
-        title: const Text('Edit Pattern', style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: controller,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
-            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFE8B86D))),
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-          TextButton(
-            onPressed: () {
-              final newPattern = controller.text.trim();
-              if (newPattern.isNotEmpty && newPattern != oldPattern) {
-                try {
-                  RegExp(newPattern);
-                  setState(() {
-                    final index = _rules[series]?.indexOf(oldPattern) ?? -1;
-                    if (index != -1) {
-                      _rules[series]![index] = newPattern;
-                      // Remove duplicates if editing resulted in same pattern
-                      _rules[series] = _rules[series]!.toSet().toList();
-                    }
-                  });
-                  _saveRules();
-                  Navigator.pop(ctx);
-                } catch (e) {
-                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Invalid regular expression')),
-                   );
-                }
-              } else {
-                 Navigator.pop(ctx);
-              }
-            },
-            child: const Text('Save', style: TextStyle(color: Color(0xFFE8B86D))),
-          ),
-        ],
-      ),
-    );
+  void _addGlobalPattern() {
+    final pattern = _globalPatternController.text.trim();
+    if (pattern.isEmpty) return;
+    try { RegExp(pattern); } catch (_) { return; }
+
+    setState(() {
+      if (!_globalPatterns.contains(pattern)) _globalPatterns.add(pattern);
+    });
+    _globalPatternController.clear();
+    _saveGlobals();
+  }
+
+  void _removeGlobalPattern(String pattern) {
+    setState(() {
+      _globalPatterns.remove(pattern);
+    });
+    _saveGlobals();
+  }
+
+  // --- Saga Codes Logic ---
+  
+  void _saveCodes() {
+    _storage.saveSagaCodes(_sagaCodes);
+  }
+
+  void _addCode() {
+    final code = _codeController.text.trim().toUpperCase();
+    final saga = _codeSagaController.text.trim();
+    if (code.isEmpty || saga.isEmpty) return;
+
+    setState(() {
+      _sagaCodes[code] = saga;
+    });
+    _codeController.clear();
+    _codeSagaController.clear();
+    _saveCodes();
+  }
+
+  void _removeCode(String code) {
+    setState(() {
+      _sagaCodes.remove(code);
+    });
+    _saveCodes();
+  }
+
+  // --- Simulator Logic ---
+  void _evaluateSimulator() {
+    final testStr = _simTestController.text;
+    final regexStr = _simRegexController.text;
+    
+    if (regexStr.isEmpty) {
+      setState(() {
+        _simError = null;
+        _simMatch = null;
+      });
+      return;
+    }
+
+    try {
+      final regExp = RegExp(regexStr, caseSensitive: false);
+      setState(() {
+        _simError = null;
+        _simMatch = regExp.firstMatch(testStr);
+      });
+    } catch (e) {
+      setState(() {
+        _simError = 'Invalid Regular Expression';
+        _simMatch = null;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF1A1A1A),
-      appBar: AppBar(
-        title: const Text('Series Mapping Rules'),
-        backgroundColor: const Color(0xFF252525),
+    return DefaultTabController(
+      length: 4,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF1A1A1A),
+        appBar: AppBar(
+          title: const Text('Series Mapping Rules'),
+          backgroundColor: const Color(0xFF252525),
+          bottom: const TabBar(
+            indicatorColor: Color(0xFFE8B86D),
+            labelColor: Color(0xFFE8B86D),
+            unselectedLabelColor: Colors.white54,
+            tabs: [
+              Tab(text: 'Specific'),
+              Tab(text: 'Global'),
+              Tab(text: 'Codes'),
+              Tab(text: 'Simulator'),
+            ],
+          ),
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFFE8B86D)))
+            : TabBarView(
+                children: [
+                  _buildSpecificTab(),
+                  _buildGlobalTab(),
+                  _buildCodesTab(),
+                  _buildSimulatorTab(),
+                ],
+              ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE8B86D)))
-          : Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  color: const Color(0xFF252525),
+    );
+  }
+
+  Widget _buildSpecificTab() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: const Color(0xFF252525),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Add a specific saga rule', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _seriesController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Saga / Series Name',
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFFE8B86D))),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _patternController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'Regex Pattern',
+                        labelStyle: TextStyle(color: Colors.white54),
+                        enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                        focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFFE8B86D))),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: _addRule,
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE8B86D), foregroundColor: const Color(0xFF1A1A1A)),
+                    child: const Icon(Icons.add),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: _rules.length,
+            itemBuilder: (context, index) {
+              final series = _rules.keys.elementAt(index);
+              final patterns = _rules[series]!;
+              return Card(
+                color: const Color(0xFF333333),
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Add a new mapping rule',
-                        style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold),
-                      ),
+                      Text(series, style: const TextStyle(color: Color(0xFFE8B86D), fontSize: 18, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
-                      TextField(
-                        controller: _seriesController,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(
-                          labelText: 'Saga / Series Name',
-                          labelStyle: TextStyle(color: Colors.white54),
-                          enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                          focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFFE8B86D))),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
+                      ...patterns.map((pattern) => Row(
                         children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _patternController,
-                              style: const TextStyle(color: Colors.white),
-                              decoration: const InputDecoration(
-                                labelText: 'Regex Pattern (variables: ?<year>, ?<title>, ?<author>)',
-                                labelStyle: TextStyle(color: Colors.white54),
-                                enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                                focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFFE8B86D))),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              ),
-                            ),
-                          ),
+                          const Icon(Icons.code, size: 16, color: Colors.white54),
                           const SizedBox(width: 8),
-                          ElevatedButton(
-                            onPressed: _addRule,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFE8B86D),
-                              foregroundColor: const Color(0xFF1A1A1A),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                            child: const Icon(Icons.add),
-                          ),
+                          Expanded(child: Text(pattern, style: const TextStyle(fontFamily: 'monospace', color: Colors.white70))),
+                          IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20), onPressed: () => _removeRule(series, pattern), constraints: const BoxConstraints(), padding: EdgeInsets.zero),
                         ],
-                      ),
+                      )),
                     ],
                   ),
                 ),
-                Expanded(
-                  child: _rules.isEmpty
-                      ? Center(
-                          child: Text(
-                            'No mapping rules defined.',
-                            style: TextStyle(color: Colors.white.withOpacity(0.5)),
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _rules.keys.length,
-                          itemBuilder: (context, index) {
-                            final series = _rules.keys.elementAt(index);
-                            final patterns = _rules[series]!;
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 
-                            return Card(
-                              color: const Color(0xFF333333),
-                              margin: const EdgeInsets.only(bottom: 12),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            series,
-                                            style: const TextStyle(
-                                              color: Color(0xFFE8B86D),
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.edit, color: Colors.white54, size: 20),
-                                          onPressed: () => _editSeriesName(series),
-                                          constraints: const BoxConstraints(),
-                                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    ...patterns.map((pattern) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 4),
-                                      child: Row(
-                                        children: [
-                                          const Icon(Icons.code, size: 16, color: Colors.white54),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              pattern,
-                                              style: const TextStyle(
-                                                fontFamily: 'monospace',
-                                                color: Colors.white70,
-                                              ),
-                                            ),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.edit, color: Colors.white54, size: 20),
-                                            onPressed: () => _editPattern(series, pattern),
-                                            constraints: const BoxConstraints(),
-                                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
-                                            onPressed: () => _removeRule(series, pattern),
-                                            constraints: const BoxConstraints(),
-                                            padding: EdgeInsets.zero,
-                                          ),
-                                        ],
-                                      ),
-                                    )),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+  Widget _buildGlobalTab() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: const Color(0xFF252525),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _globalPatternController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Add Global Regex Pattern',
+                    labelStyle: TextStyle(color: Colors.white54),
+                    enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFFE8B86D))),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
                 ),
-              ],
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: _addGlobalPattern,
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE8B86D), foregroundColor: const Color(0xFF1A1A1A)),
+                child: const Icon(Icons.add),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: _globalPatterns.length,
+            itemBuilder: (context, index) {
+              final pattern = _globalPatterns[index];
+              return Card(
+                color: const Color(0xFF333333),
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: const Icon(Icons.public, color: Colors.white54),
+                  title: Text(pattern, style: const TextStyle(fontFamily: 'monospace', color: Colors.white70)),
+                  trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () => _removeGlobalPattern(pattern)),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCodesTab() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: const Color(0xFF252525),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Add Saga Code (e.g., Code: HP, Saga: Harry Potter)', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 1,
+                    child: TextField(
+                      controller: _codeController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'Code',
+                        labelStyle: TextStyle(color: Colors.white54),
+                        enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                        focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFFE8B86D))),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2,
+                    child: TextField(
+                      controller: _codeSagaController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'Saga Name',
+                        labelStyle: TextStyle(color: Colors.white54),
+                        enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                        focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFFE8B86D))),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: _addCode,
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE8B86D), foregroundColor: const Color(0xFF1A1A1A)),
+                    child: const Icon(Icons.add),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: _sagaCodes.length,
+            itemBuilder: (context, index) {
+              final code = _sagaCodes.keys.elementAt(index);
+              final saga = _sagaCodes[code]!;
+              return Card(
+                color: const Color(0xFF333333),
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: CircleAvatar(backgroundColor: const Color(0xFFE8B86D).withValues(alpha: 0.2), child: Text(code, style: const TextStyle(color: Color(0xFFE8B86D), fontWeight: FontWeight.bold))),
+                  title: Text(saga, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () => _removeCode(code)),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSimulatorTab() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: const Color(0xFF252525),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Test String (e.g. folder path or file name)', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _simTestController,
+                style: const TextStyle(color: Colors.white),
+                onChanged: (_) => _evaluateSimulator(),
+                decoration: const InputDecoration(
+                  labelText: 'String to evaluate',
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFFE8B86D))),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Regex Pattern', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.arrow_drop_down, color: Color(0xFFE8B86D)),
+                    color: const Color(0xFF333333),
+                    tooltip: 'Select an existing pattern',
+                    onSelected: (pattern) {
+                      _simRegexController.text = pattern;
+                      _evaluateSimulator();
+                    },
+                    itemBuilder: (context) {
+                      final List<String> allPatterns = [..._globalPatterns];
+                      for (final rules in _rules.values) {
+                        allPatterns.addAll(rules);
+                      }
+                      return allPatterns.toSet().map((p) => PopupMenuItem(
+                        value: p,
+                        child: Text(p, style: const TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 12)),
+                      )).toList();
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _simRegexController,
+                style: const TextStyle(color: Colors.white),
+                onChanged: (_) => _evaluateSimulator(),
+                decoration: const InputDecoration(
+                  labelText: 'e.g. ^(?<author>[^/]+)/(?<title>.*)',
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFFE8B86D))),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _buildSimulatorResults(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSimulatorResults() {
+    if (_simRegexController.text.isEmpty) {
+      return Center(child: Text('Enter a pattern to begin', style: TextStyle(color: Colors.white.withValues(alpha: 0.5))));
+    }
+
+    if (_simError != null) {
+      return Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.redAccent),
+            const SizedBox(width: 8),
+            Text(_simError!, style: const TextStyle(color: Colors.redAccent)),
+          ],
+        ),
+      );
+    }
+
+    if (_simMatch == null) {
+      return const Center(child: Text('No Match Found', style: TextStyle(color: Colors.orangeAccent, fontSize: 16)));
+    }
+
+    final match = _simMatch!;
+    final List<Widget> groupWidgets = [];
+    
+    // We try to grab named groups. If the environment doesn't expose `groupNames` natively we can iterate 
+    // over common known groups, or just use the new `groupNames` getter.
+    for (final groupName in match.groupNames) {
+      final value = match.namedGroup(groupName);
+      if (value != null) {
+        groupWidgets.add(
+          Card(
+            color: const Color(0xFF333333),
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              title: Text(groupName, style: const TextStyle(color: Color(0xFFE8B86D), fontWeight: FontWeight.bold, fontSize: 14)),
+              subtitle: Text(value, style: const TextStyle(color: Colors.white, fontSize: 16)),
             ),
+          )
+        );
+      }
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.check_circle_outline, color: Colors.greenAccent),
+            SizedBox(width: 8),
+            Text('Match Successful', style: TextStyle(color: Colors.greenAccent, fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (groupWidgets.isEmpty)
+          Text('No named groups extracted.', style: TextStyle(color: Colors.white.withValues(alpha: 0.5)))
+        else
+          ...groupWidgets,
+      ],
     );
   }
 }

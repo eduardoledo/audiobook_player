@@ -9,6 +9,8 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../models/audiobook.dart';
 import '../models/scan_message.dart';
+import '../service_locator.dart';
+import 'library_storage.dart';
 
 /// Parsed metadata from directory path.
 /// Patterns: "base/Author/BookTitle" or "base/Author/Saga/BookTitle"
@@ -134,11 +136,17 @@ class AudiobookScanner {
         }
 
         try {
+          final storage = getIt<LibraryStorage>();
+          final globalPatterns = await storage.getGlobalPatterns();
+          final sagaCodes = await storage.getSagaCodes();
+
           isolate = await Isolate.spawn(_isolateScan, {
             'path': directoryPath,
             'sendPort': receivePort.sendPort,
             'skipPaths': skipPaths,
             'seriesRules': seriesRules,
+            'globalPatterns': globalPatterns,
+            'sagaCodes': sagaCodes,
           });
 
           receivePort.listen((message) {
@@ -166,6 +174,8 @@ class AudiobookScanner {
     final SendPort sendPort = args['sendPort'];
     final Set<String> skipPaths = args['skipPaths'] ?? {};
     final Map<String, List<String>>? seriesRules = args['seriesRules'];
+    final List<String> globalPatterns = args['globalPatterns'] ?? [];
+    final Map<String, String> sagaCodes = args['sagaCodes'] ?? {};
 
     // Get top-level directories for progress calculation
     List<Directory> topLevelDirs = [];
@@ -200,7 +210,7 @@ class AudiobookScanner {
           entity is File && _audioExtensions.contains(p.extension(entity.path).toLowerCase()));
       
       if (isAudioDirectory) {
-        final audiobook = await _loadAudiobook(entities, basePath, seriesRules);
+        final audiobook = await _loadAudiobook(entities, basePath, seriesRules, globalPatterns, sagaCodes);
         if (audiobook != null) {
           sendPort.send(ScanMessage(audiobook: audiobook, progress: processedTopDirs / totalTopDirs));
         }
@@ -221,7 +231,7 @@ class AudiobookScanner {
       var isAudioDirectory = rootEntities.any((entity) =>
           entity is File && _audioExtensions.contains(p.extension(entity.path).toLowerCase()));
       if (isAudioDirectory) {
-        final audiobook = await _loadAudiobook(rootEntities, directoryPath, seriesRules);
+        final audiobook = await _loadAudiobook(rootEntities, directoryPath, seriesRules, globalPatterns, sagaCodes);
         if (audiobook != null) {
           sendPort.send(ScanMessage(audiobook: audiobook, progress: 0.0));
         }
@@ -244,7 +254,12 @@ class AudiobookScanner {
   }
 
   /// Loads audiobook metadata from a file. Looks for chapters.json in same directory.
-  static Future<Audiobook?> _loadAudiobook(List<FileSystemEntity> entities, String baseDirectoryPath, Map<String, List<String>>? seriesRules) async {
+  static Future<Audiobook?> _loadAudiobook(
+      List<FileSystemEntity> entities, 
+      String baseDirectoryPath, 
+      Map<String, List<String>>? seriesRules,
+      List<String> globalPatterns,
+      Map<String, String> sagaCodes) async {
     final audioFiles = entities.whereType<File>().where((f) => _audioExtensions.contains(p.extension(f.path).toLowerCase())).toList();
     if (audioFiles.isEmpty) return null;
     final dir = audioFiles.first.parent;
@@ -255,9 +270,12 @@ class AudiobookScanner {
     String author = dirPathMetadata?.author ?? 'Unknown';
     String? saga = dirPathMetadata?.saga;
     String? publishYear;
+    String? seriesSequence;
+    String? narrator;
     
+    bool found = false;
+
     if (seriesRules != null && seriesRules.isNotEmpty) {
-      bool found = false;
       for (final entry in seriesRules.entries) {
         final seriesName = entry.key;
         for (final patternStr in entry.value) {
@@ -287,6 +305,20 @@ class AudiobookScanner {
                   author = extractedAuthor.trim();
                 }
               }
+
+              if (match.groupNames.contains('narrator')) {
+                final extractedNarrator = match.namedGroup('narrator');
+                if (extractedNarrator != null && extractedNarrator.isNotEmpty) {
+                  narrator = extractedNarrator.trim();
+                }
+              }
+
+              if (match.groupNames.contains('seriesSequence')) {
+                final seq = match.namedGroup('seriesSequence');
+                if (seq != null && seq.isNotEmpty) {
+                  seriesSequence = seq.trim();
+                }
+              }
               
               found = true;
               break;
@@ -299,11 +331,63 @@ class AudiobookScanner {
       }
     }
 
+    if (!found && globalPatterns.isNotEmpty) {
+      final relativePath = p.relative(dirPath, from: baseDirectoryPath).replaceAll(r'\', '/');
+      for (final patternStr in globalPatterns) {
+        try {
+          final regExp = RegExp(patternStr, caseSensitive: false);
+          final match = regExp.firstMatch(relativePath) ?? regExp.firstMatch(bookTitle);
+          if (match != null) {
+            if (match.groupNames.contains('seriesCode')) {
+              final code = match.namedGroup('seriesCode');
+              if (code != null && code.isNotEmpty) {
+                saga = sagaCodes[code] ?? code;
+              }
+            } else if (match.groupNames.contains('series')) {
+               final extractedSeries = match.namedGroup('series');
+               if (extractedSeries != null && extractedSeries.isNotEmpty) {
+                  saga = extractedSeries.trim();
+               }
+            }
+
+            if (match.groupNames.contains('seriesSequence')) {
+               final seq = match.namedGroup('seriesSequence');
+               if (seq != null && seq.isNotEmpty) {
+                  seriesSequence = seq.trim();
+               }
+            }
+
+            if (match.groupNames.contains('year')) {
+               final yearStr = match.namedGroup('year');
+               if (yearStr != null && yearStr.isNotEmpty) publishYear = yearStr.trim();
+            }
+            if (match.groupNames.contains('title')) {
+               final extractedTitle = match.namedGroup('title');
+               if (extractedTitle != null && extractedTitle.isNotEmpty) bookTitle = extractedTitle.trim();
+            }
+            if (match.groupNames.contains('author')) {
+               final extractedAuthor = match.namedGroup('author');
+               if (extractedAuthor != null && extractedAuthor.isNotEmpty) author = extractedAuthor.trim();
+            }
+            if (match.groupNames.contains('narrator')) {
+               final extractedNarrator = match.namedGroup('narrator');
+               if (extractedNarrator != null && extractedNarrator.isNotEmpty) narrator = extractedNarrator.trim();
+            }
+            
+            found = true;
+            break;
+          }
+        } catch (_) {}
+      }
+    }
+
     return Audiobook(
       path: dirPath,
       title: bookTitle,
       author: author,
+      narrator: narrator,
       series: saga,
+      seriesSequence: seriesSequence,
       publishYear: publishYear,
       files: audioFiles.map((file) => file.path).toList(),
       durationFormatted: '00:00:00.000', // Postponed calculation

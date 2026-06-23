@@ -208,6 +208,54 @@ class LibraryStorage {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  Future<List<String>> getGlobalPatterns() async {
+    final db = await database;
+    final maps = await db.query('settings', where: 'key = ?', whereArgs: ['global_patterns']);
+    if (maps.isNotEmpty) {
+      final jsonStr = maps.first['value'] as String;
+      try {
+        final decoded = jsonDecode(jsonStr) as List<dynamic>;
+        return decoded.map((e) => e.toString()).toList();
+      } catch (_) {}
+    }
+    // Default patterns if none are set
+    return [
+      r'^(?<year>\d{4})\s*-\s*(?<title>[^(]+?)\s*\([^)]*?(?:read by|narrated by)\s*(?<narrator>[^)]+).*$',
+      r'\[(?<seriesCode>[A-Za-z]+)\s*(?<seriesSequence>\d+)\]\s*(?<title>.*)',
+      r'^(?<author>[^/]+)/(?<series>[^/]+)/(?<seriesSequence>\d+)\s*-\s*(?<title>.*)$',
+      r'^(?<author>[^/]+)/(?<title>.*)$',
+    ];
+  }
+
+  Future<void> saveGlobalPatterns(List<String> patterns) async {
+    final db = await database;
+    await db.insert('settings', {
+      'key': 'global_patterns',
+      'value': jsonEncode(patterns),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<Map<String, String>> getSagaCodes() async {
+    final db = await database;
+    final maps = await db.query('settings', where: 'key = ?', whereArgs: ['saga_codes']);
+    if (maps.isNotEmpty) {
+      final jsonStr = maps.first['value'] as String;
+      try {
+        final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
+        return decoded.map((key, value) => MapEntry(key, value.toString()));
+      } catch (_) {}
+    }
+    return {};
+  }
+
+  Future<void> saveSagaCodes(Map<String, String> codes) async {
+    final db = await database;
+    await db.insert('settings', {
+      'key': 'saga_codes',
+      'value': jsonEncode(codes),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
   // --- Bookmarks ---
   
   Future<List<Bookmark>> getBookmarks(String bookPath) async {

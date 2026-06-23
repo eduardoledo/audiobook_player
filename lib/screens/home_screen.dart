@@ -6,8 +6,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/home_cubit.dart';
 import '../bloc/home_state.dart';
 import '../models/audiobook.dart';
-import '../service_locator.dart';
-import '../services/library_storage.dart';
 import 'player_screen.dart';
 import 'playlists_tab.dart';
 import 'series_mapping_screen.dart';
@@ -350,7 +348,10 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                         iconColor: Colors.white70,
                         collapsedIconColor: Colors.white54,
                         title: Text(series, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 15)),
-                        children: books.map((book) => _buildAudiobookTile(context, state, book)).toList(),
+                        children: books.map((book) {
+                          final prefix = book.seriesSequence != null ? 'Book ${book.seriesSequence} - ' : '';
+                          return _buildAudiobookTile(context, state, book, prefix: prefix);
+                        }).toList(),
                       ),
                     );
                   } else {
@@ -368,7 +369,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
     );
   }
 
-  Widget _buildAudiobookTile(BuildContext context, HomeState state, Audiobook book) {
+  Widget _buildAudiobookTile(BuildContext context, HomeState state, Audiobook book, {String prefix = ''}) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       leading: Container(
@@ -380,11 +381,11 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
         ),
         clipBehavior: Clip.hardEdge,
         child: book.coverPath != null
-            ? Image.file(File(book.coverPath!), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.audiotrack, color: Color(0xFFE8B86D), size: 28))
+            ? Image.file(File(book.coverPath!), fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.audiotrack, color: Color(0xFFE8B86D), size: 28))
             : const Icon(Icons.audiotrack, color: Color(0xFFE8B86D), size: 28),
       ),
       title: Text(
-        book.title,
+        '$prefix${book.title}',
         style: const TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.w500,
@@ -394,6 +395,14 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+            '${book.author}${book.narrator != null ? ' (read by ${book.narrator})' : ''}',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.8),
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 2),
           Text(
             '${book.durationFormatted} • ${book.totalChapters} chapters${book.publishYear != null ? ' • ${book.publishYear}' : ''}',
             style: TextStyle(

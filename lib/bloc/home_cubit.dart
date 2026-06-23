@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../models/audiobook.dart';
-import '../models/playlist.dart';
 import '../service_locator.dart';
 import '../services/audiobook_scanner.dart';
 import '../services/library_storage.dart';

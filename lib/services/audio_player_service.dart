@@ -75,25 +75,22 @@ class AudioPlayerService {
 
   Future<void> setAudiobook(Audiobook audiobook, {int chapterIndex = 0, Duration position = Duration.zero}) async {
     currentAudiobook = audiobook;
-    final playlist = ConcatenatingAudioSource(
-      useLazyPreparation: true,
-      children: audiobook.files.asMap().entries.map((entry) {
-        final index = entry.key;
-        final path = entry.value;
-        final title = index < audiobook.chapters.length ? audiobook.chapters[index].title : 'Chapter ${index + 1}';
-        
-        return AudioSource.uri(
-          Uri.file(path),
-          tag: MediaItem(
-            id: '${audiobook.path}_$index',
-            album: audiobook.title,
-            title: title,
-            artist: audiobook.author,
-          ),
-        );
-      }).toList(),
-    );
-    await _player.setAudioSource(playlist, initialIndex: chapterIndex, initialPosition: position);
+    final playlist = audiobook.files.asMap().entries.map((entry) {
+      final index = entry.key;
+      final path = entry.value;
+      final title = index < audiobook.chapters.length ? audiobook.chapters[index].title : 'Chapter ${index + 1}';
+      
+      return AudioSource.uri(
+        Uri.file(path),
+        tag: MediaItem(
+          id: '${audiobook.path}_$index',
+          album: audiobook.title,
+          title: title,
+          artist: audiobook.author,
+        ),
+      );
+    }).toList();
+    await _player.setAudioSources(playlist, initialIndex: chapterIndex, initialPosition: position);
   }
 
   Future<void> seekToChapter(Audiobook audiobook, int chapterIndex) async {

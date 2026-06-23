@@ -6,7 +6,9 @@ class Audiobook {
   final String path;
   final String title;
   final String author;
+  final String? narrator;
   final String? series;
+  final String? seriesSequence;
   final String? description;
   final String? publishYear;
   final List<String> subjects;
@@ -22,7 +24,9 @@ class Audiobook {
     required this.path,
     required this.title,
     required this.author,
+    this.narrator,
     this.series,
+    this.seriesSequence,
     this.description,
     this.publishYear,
     this.subjects = const [],
@@ -47,7 +51,9 @@ class Audiobook {
       path: basePath,
       title: json['title'] as String? ?? 'Unknown',
       author: json['author'] as String? ?? 'Unknown',
+      narrator: json['narrator'] as String?,
       series: json['series'] as String? ?? json['album'] as String?,
+      seriesSequence: json['seriesSequence'] as String?,
       description: json['description'] as String?,
       publishYear: json['publishYear'] as String?,
       subjects: (json['subjects'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
@@ -64,7 +70,9 @@ class Audiobook {
   Audiobook copyWith({
     String? title,
     String? author,
+    String? narrator,
     String? series,
+    String? seriesSequence,
     String? description,
     String? publishYear,
     List<String>? subjects,
@@ -76,10 +84,12 @@ class Audiobook {
     List<Chapter>? chapters,
   }) {
     return Audiobook(
-      path: this.path,
+      path: path,
       title: title ?? this.title,
       author: author ?? this.author,
+      narrator: narrator ?? this.narrator,
       series: series ?? this.series,
+      seriesSequence: seriesSequence ?? this.seriesSequence,
       description: description ?? this.description,
       publishYear: publishYear ?? this.publishYear,
       subjects: subjects ?? this.subjects,
@@ -99,7 +109,9 @@ class Audiobook {
         'path': path,
         'title': title,
         'author': author,
+        'narrator': narrator,
         'series': series,
+        'seriesSequence': seriesSequence,
         'description': description,
         'publishYear': publishYear,
         'subjects': subjects,
