@@ -6,9 +6,13 @@ class Audiobook {
   final String path;
   final String title;
   final String author;
-  final String? album;
+  final String? series;
+  final String? description;
+  final String? publishYear;
+  final List<String> subjects;
+  final String? coverPath;
+  final bool hasMetadataLocally;
   final List<String> files;
-  // final double duration;
   final String durationFormatted;
   final int totalChapters;
   final List<Chapter> chapters;
@@ -18,9 +22,13 @@ class Audiobook {
     required this.path,
     required this.title,
     required this.author,
-    this.album,
+    this.series,
+    this.description,
+    this.publishYear,
+    this.subjects = const [],
+    this.coverPath,
+    this.hasMetadataLocally = false,
     required this.files,
-    // required this.duration,
     required this.durationFormatted,
     required this.totalChapters,
     required this.chapters,
@@ -39,13 +47,48 @@ class Audiobook {
       path: basePath,
       title: json['title'] as String? ?? 'Unknown',
       author: json['author'] as String? ?? 'Unknown',
-      album: json['album'] as String?,
-      files: json['files'] as List<String>? ?? [],
-      // duration: (audio['duration'] as num?)?.toDouble() ?? 0,
+      series: json['series'] as String? ?? json['album'] as String?,
+      description: json['description'] as String?,
+      publishYear: json['publishYear'] as String?,
+      subjects: (json['subjects'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      coverPath: json['coverPath'] as String?,
+      hasMetadataLocally: json['hasMetadataLocally'] as bool? ?? false,
+      files: (json['files'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       durationFormatted:
           audio['durationFormatted'] as String? ?? '00:00:00.000',
       totalChapters: json['totalChapters'] as int? ?? chapters.length,
       chapters: chapters,
+    );
+  }
+
+  Audiobook copyWith({
+    String? title,
+    String? author,
+    String? series,
+    String? description,
+    String? publishYear,
+    List<String>? subjects,
+    String? coverPath,
+    bool? hasMetadataLocally,
+    List<String>? files,
+    String? durationFormatted,
+    int? totalChapters,
+    List<Chapter>? chapters,
+  }) {
+    return Audiobook(
+      path: this.path,
+      title: title ?? this.title,
+      author: author ?? this.author,
+      series: series ?? this.series,
+      description: description ?? this.description,
+      publishYear: publishYear ?? this.publishYear,
+      subjects: subjects ?? this.subjects,
+      coverPath: coverPath ?? this.coverPath,
+      hasMetadataLocally: hasMetadataLocally ?? this.hasMetadataLocally,
+      files: files ?? this.files,
+      durationFormatted: durationFormatted ?? this.durationFormatted,
+      totalChapters: totalChapters ?? this.totalChapters,
+      chapters: chapters ?? this.chapters,
     );
   }
 
@@ -56,9 +99,13 @@ class Audiobook {
         'path': path,
         'title': title,
         'author': author,
-        'album': album,
+        'series': series,
+        'description': description,
+        'publishYear': publishYear,
+        'subjects': subjects,
+        'coverPath': coverPath,
+        'hasMetadataLocally': hasMetadataLocally,
         'files': files,
-        // 'duration': duration,
         'durationFormatted': durationFormatted,
         'totalChapters': totalChapters,
         'chapters': chapters.map((c) => c.toJson()).toList(),

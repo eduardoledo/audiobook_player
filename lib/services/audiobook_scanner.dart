@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:audio_meta/audio_meta.dart';
@@ -6,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../models/audiobook.dart';
+import '../models/scan_message.dart';
 
 /// Parsed metadata from directory path.
 /// Patterns: "base/Author/BookTitle" or "base/Author/Saga/BookTitle"
@@ -68,17 +71,22 @@ class AudiobookScanner {
     return null;
   }
 
-  static String _formatDuration(double seconds) {
+  static String formatDuration(double seconds) {
     final h = (seconds ~/ 3600).toString().padLeft(2, '0');
     final m = ((seconds % 3600) ~/ 60).toString().padLeft(2, '0');
     final s = (seconds % 60).toStringAsFixed(3).padLeft(6, '0');
     return '$h:$m:$s';
   }
 
-  /// Extracts audio metadata from a file (duration, bitrate, etc.).
   static Future<AudioFileMetadata?> getAudioMetadata(File file) async {
     try {
-      final bytes = await file.readAsBytes();
+      // Shallow read: Only read the first 512KB to prevent memory exhaustion and slow I/O
+      // ID3 tags or M4B/MP4 moov atoms are almost always at the start or end.
+      // audio_meta handles missing data gracefully if the moov atom is found early.
+      final randomAccessFile = await file.open();
+      final bytes = await randomAccessFile.read(512 * 1024);
+      await randomAccessFile.close();
+      
       final meta = AudioMeta(Uint8List.fromList(bytes));
       return AudioFileMetadata(
         duration: meta.duration,
@@ -93,88 +101,212 @@ class AudiobookScanner {
     }
   }
 
-  /// Scans a directory and all subdirectories recursively for audiobooks.
-  /// Returns a list of Audiobook objects found.
-  static Future<List<Audiobook>> scanDirectory(String directoryPath) async {
-    var status = await Permission.manageExternalStorage.request();
-    List<FileSystemEntity> entities = [];
-    if (!status.isGranted) {
-      status = await Permission.storage.request();
-    }
-    if (status.isGranted) {
+  /// Scans directories for audiobooks, yielding them progressively.
+  Stream<ScanMessage> scanDirectoryStream(String directoryPath, {Set<String> skipPaths = const {}, Map<String, List<String>>? seriesRules}) {
+    late StreamController<ScanMessage> controller;
+    Isolate? isolate;
+    final receivePort = ReceivePort();
 
-        final dir = Directory(directoryPath);
-        if (await dir.exists()) {
-          entities = await dir.list().toList();
+    void stopScan() {
+      isolate?.kill(priority: Isolate.immediate);
+      receivePort.close();
+      if (!controller.isClosed) {
+        controller.close();
+      }
+    }
+
+    controller = StreamController<ScanMessage>(
+      onListen: () async {
+        bool hasPermission = true;
+
+        if (Platform.isAndroid || Platform.isIOS) {
+          var status = await Permission.manageExternalStorage.request();
+          if (!status.isGranted) {
+            status = await Permission.storage.request();
+          }
+          hasPermission = status.isGranted;
         }
-    } else {
-      throw Exception('Permission denied to access external storage.');
-    }
-    final results = <Audiobook>[];
-    final dir = Directory(directoryPath);
 
-    if (!await dir.exists()) {
-      return results;
-    }
-  
-    var isAudioDirectory = entities.any((entity) => entity is File && _audioExtensions.contains(entity.path.toLowerCase().split('.').last));
-    if (isAudioDirectory) {
-      final audiobook = await _loadAudiobook(entities, directoryPath);
-      if (audiobook != null) {
-        results.add(audiobook);
+        if (!hasPermission) {
+          controller.addError(Exception('Permission denied to access external storage.'));
+          stopScan();
+          return;
+        }
+
+        try {
+          isolate = await Isolate.spawn(_isolateScan, {
+            'path': directoryPath,
+            'sendPort': receivePort.sendPort,
+            'skipPaths': skipPaths,
+            'seriesRules': seriesRules,
+          });
+
+          receivePort.listen((message) {
+            if (message == null) {
+              stopScan();
+            } else if (message is ScanMessage) {
+              if (!controller.isClosed) {
+                controller.add(message);
+              }
+            }
+          });
+        } catch (e) {
+          controller.addError(e);
+          stopScan();
+        }
+      },
+      onCancel: stopScan,
+    );
+
+    return controller.stream;
+  }
+
+  static Future<void> _isolateScan(Map<String, dynamic> args) async {
+    final String directoryPath = args['path'];
+    final SendPort sendPort = args['sendPort'];
+    final Set<String> skipPaths = args['skipPaths'] ?? {};
+    final Map<String, List<String>>? seriesRules = args['seriesRules'];
+
+    // Get top-level directories for progress calculation
+    List<Directory> topLevelDirs = [];
+    try {
+      final baseDir = Directory(directoryPath);
+      await for (final entity in baseDir.list(recursive: false)) {
+        if (entity is Directory && !skipPaths.contains(entity.path)) {
+          topLevelDirs.add(entity);
+        }
+      }
+      topLevelDirs.sort((a, b) => a.path.compareTo(b.path));
+    } catch (_) {}
+
+    final totalTopDirs = topLevelDirs.isEmpty ? 1 : topLevelDirs.length;
+    int processedTopDirs = 0;
+    int lastSendTime = DateTime.now().millisecondsSinceEpoch;
+
+    Future<void> scanSubTree(String currentPath, String basePath) async {
+      if (skipPaths.contains(currentPath)) return;
+      final dir = Directory(currentPath);
+      if (!await dir.exists()) return;
+
+      List<FileSystemEntity> entities = [];
+      try {
+        entities = await dir.list().toList();
+        entities.sort((a, b) => a.path.compareTo(b.path));
+      } catch (_) {
+        return;
+      }
+
+      var isAudioDirectory = entities.any((entity) =>
+          entity is File && _audioExtensions.contains(p.extension(entity.path).toLowerCase()));
+      
+      if (isAudioDirectory) {
+        final audiobook = await _loadAudiobook(entities, basePath, seriesRules);
+        if (audiobook != null) {
+          sendPort.send(ScanMessage(audiobook: audiobook, progress: processedTopDirs / totalTopDirs));
+        }
+      }
+
+      for (final entity in entities) {
+        if (entity is Directory) {
+          await scanSubTree(entity.path, basePath);
+        }
       }
     }
-    for (final entity in entities) {
-      if (entity is File) {
-        final ext = entity.path.toLowerCase().split('.').last;
-        final fullExt = '.$ext';
-        print('fullExt: $fullExt');
-        print('entity.path: ${entity.path}');
+
+    // First scan root dir files (if any)
+    try {
+      final baseDir = Directory(directoryPath);
+      List<FileSystemEntity> rootEntities = await baseDir.list(recursive: false).where((e) => e is File).toList();
+      rootEntities.sort((a, b) => a.path.compareTo(b.path));
+      var isAudioDirectory = rootEntities.any((entity) =>
+          entity is File && _audioExtensions.contains(p.extension(entity.path).toLowerCase()));
+      if (isAudioDirectory) {
+        final audiobook = await _loadAudiobook(rootEntities, directoryPath, seriesRules);
+        if (audiobook != null) {
+          sendPort.send(ScanMessage(audiobook: audiobook, progress: 0.0));
+        }
+      }
+    } catch (_) {}
+
+    // Then process top level dirs
+    for (var topDir in topLevelDirs) {
+      await scanSubTree(topDir.path, directoryPath);
+      processedTopDirs++;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - lastSendTime > 100 || processedTopDirs == totalTopDirs) {
+        sendPort.send(ScanMessage(progress: processedTopDirs / totalTopDirs));
+        lastSendTime = now;
       }
     }
-    
-    // for (final entity in entities) {
-    //   print('entity: ${entity.runtimeType}');
-    //   if (entity is File) {
-    //     final ext = entity.path.toLowerCase().split('.').last;
-    //     final fullExt = '.$ext';
-    //     print('fullExt: $fullExt');
-    //     print('entity.path: ${entity.path}');
-    //     if (_audioExtensions.contains(fullExt)) {
-    //       final audiobook = await _loadAudiobook(entity);
-    //       if (audiobook != null) {
-    //         results.add(audiobook);
-    //       }
-    //     }
-    //   }
-    //   if (entity is Directory) {
-    //     final books = await scanDirectory(entity.path);
-    //     results.addAll(books);
-    //   }
-    // }
 
-    return results;
+    sendPort.send(ScanMessage(progress: 1.0));
+    sendPort.send(null); // Signal completion
   }
 
   /// Loads audiobook metadata from a file. Looks for chapters.json in same directory.
-  static Future<Audiobook?> _loadAudiobook(List<FileSystemEntity> entities, String baseDirectoryPath) async {
+  static Future<Audiobook?> _loadAudiobook(List<FileSystemEntity> entities, String baseDirectoryPath, Map<String, List<String>>? seriesRules) async {
     final audioFiles = entities.whereType<File>().where((f) => _audioExtensions.contains(p.extension(f.path).toLowerCase())).toList();
     if (audioFiles.isEmpty) return null;
     final dir = audioFiles.first.parent;
     final dirPath = dir.path;
 
-    // Get the title from the first audio file metadata or from the directory name
     final dirPathMetadata = parseDirPath(dirPath, baseDirectoryPath);
+    String bookTitle = dirPathMetadata?.bookTitle ?? p.basename(dirPath);
+    String author = dirPathMetadata?.author ?? 'Unknown';
+    String? saga = dirPathMetadata?.saga;
+    String? publishYear;
+    
+    if (seriesRules != null && seriesRules.isNotEmpty) {
+      bool found = false;
+      for (final entry in seriesRules.entries) {
+        final seriesName = entry.key;
+        for (final patternStr in entry.value) {
+          try {
+            final regExp = RegExp(patternStr, caseSensitive: false);
+            final match = regExp.firstMatch(bookTitle);
+            if (match != null) {
+              saga = seriesName;
+              
+              if (match.groupNames.contains('year')) {
+                final yearStr = match.namedGroup('year');
+                if (yearStr != null && yearStr.isNotEmpty) {
+                  publishYear = yearStr.trim();
+                }
+              }
+              
+              if (match.groupNames.contains('title')) {
+                final extractedTitle = match.namedGroup('title');
+                if (extractedTitle != null && extractedTitle.isNotEmpty) {
+                  bookTitle = extractedTitle.trim();
+                }
+              }
+              
+              if (match.groupNames.contains('author')) {
+                final extractedAuthor = match.namedGroup('author');
+                if (extractedAuthor != null && extractedAuthor.isNotEmpty) {
+                  author = extractedAuthor.trim();
+                }
+              }
+              
+              found = true;
+              break;
+            }
+          } catch (_) {
+            // Invalid regex, ignore
+          }
+        }
+        if (found) break;
+      }
+    }
 
-    // Minimal audiobook without chapters
     return Audiobook(
-      // id: '${dirPathMetadata?.author}_${dirPathMetadata?.saga}_${dirPathMetadata?.bookTitle}',
       path: dirPath,
-      title: dirPathMetadata?.bookTitle ?? 'Unknown',
-      author: dirPathMetadata?.author ?? 'Unknown',
+      title: bookTitle,
+      author: author,
+      series: saga,
+      publishYear: publishYear,
       files: audioFiles.map((file) => file.path).toList(),
-      // duration: await audioFiles.map((file) async => (await getAudioMetadata(file))?.durationInSeconds ?? 0).reduce((a, b) async => (await a) + (await b)),
-      durationFormatted: await audioFiles.map((file) async => (await getAudioMetadata(file))?.durationInSeconds ?? 0).reduce((a, b) async => (await a) + (await b)).toString(),
+      durationFormatted: '00:00:00.000', // Postponed calculation
       totalChapters: audioFiles.length,
       chapters: [
         Chapter(

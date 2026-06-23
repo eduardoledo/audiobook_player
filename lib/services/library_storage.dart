@@ -1,60 +1,281 @@
 import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqflite/sqflite.dart';
 
 import '../models/audiobook.dart';
+import '../models/bookmark.dart';
+import '../models/playlist.dart';
 
-const _keyScanPaths = 'audiobook_scan_paths';
-const _keyAudiobooks = 'audiobook_library';
-
-/// Persists scan paths and audiobook library.
+/// Persists scan paths and audiobook library using SQLite.
 class LibraryStorage {
-  static Future<List<String>> getScanPaths() async {
-    final prefs = await SharedPreferences.getInstance();
-    final json = prefs.getString(_keyScanPaths);
-    if (json == null) return [];
-    final list = jsonDecode(json) as List<dynamic>;
-    return list.map((e) => e.toString()).toList();
+  Database? _db;
+
+  Future<Database> get database async {
+    if (_db != null) return _db!;
+    
+    final dbPath = await getDatabasesPath();
+    final path = p.join(dbPath, 'audiobook_library.db');
+    
+    _db = await openDatabase(
+      path,
+      version: 4,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE scan_paths (
+            path TEXT PRIMARY KEY
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE audiobooks (
+            path TEXT PRIMARY KEY,
+            json_data TEXT
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE playback_progress (
+            path TEXT PRIMARY KEY,
+            chapter_index INTEGER,
+            position_ms INTEGER
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+          )
+        ''');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('''
+            CREATE TABLE playback_progress (
+              path TEXT PRIMARY KEY,
+              chapter_index INTEGER,
+              position_ms INTEGER
+            )
+          ''');
+        }
+        if (oldVersion < 3) {
+          await db.execute('''
+            CREATE TABLE playlists (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE playlist_books (
+              playlist_id INTEGER,
+              book_path TEXT,
+              FOREIGN KEY(playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE bookmarks (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              book_path TEXT,
+              position_ms INTEGER,
+              label TEXT
+            )
+          ''');
+        }
+        if (oldVersion < 4) {
+          await db.execute('''
+            CREATE TABLE settings (
+              key TEXT PRIMARY KEY,
+              value TEXT
+            )
+          ''');
+        }
+      },
+    );
+    return _db!;
   }
 
-  static Future<void> saveScanPaths(List<String> paths) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyScanPaths, jsonEncode(paths));
+  Future<List<String>> getScanPaths() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('scan_paths');
+    return maps.map((e) => e['path'] as String).toList();
   }
 
-  static Future<void> addScanPath(String path) async {
-    final paths = await getScanPaths();
-    if (!paths.contains(path)) {
-      paths.add(path);
-      await saveScanPaths(paths);
+  Future<void> saveScanPaths(List<String> paths) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('scan_paths');
+      for (final path in paths) {
+        await txn.insert(
+          'scan_paths', 
+          {'path': path},
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
+
+  Future<void> addScanPath(String path) async {
+    final db = await database;
+    await db.insert(
+      'scan_paths', 
+      {'path': path}, 
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  Future<void> removeScanPath(String path) async {
+    final db = await database;
+    await db.delete('scan_paths', where: 'path = ?', whereArgs: [path]);
+  }
+
+  Future<List<Audiobook>> getAudiobooks() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('audiobooks');
+    final List<Audiobook> books = [];
+    
+    for (var row in maps) {
+      try {
+        final path = row['path'] as String;
+        final jsonStr = row['json_data'] as String;
+        final map = jsonDecode(jsonStr) as Map<String, dynamic>;
+        books.add(Audiobook.fromJson(map, path));
+      } catch (_) {
+        // Skip corrupted entries
+      }
+    }
+    return books;
+  }
+
+  Future<void> saveAudiobooks(List<Audiobook> audiobooks) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('audiobooks');
+      for (final a in audiobooks) {
+        await txn.insert(
+          'audiobooks', 
+          {
+            'path': a.path,
+            'json_data': jsonEncode(a.toJson()),
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
+
+  Future<void> savePlaybackProgress(String bookPath, int chapterIndex, int positionMs) async {
+    final db = await database;
+    await db.insert(
+      'playback_progress',
+      {
+        'path': bookPath,
+        'chapter_index': chapterIndex,
+        'position_ms': positionMs,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<Map<String, int>?> getPlaybackProgress(String bookPath) async {
+    final db = await database;
+    final maps = await db.query('playback_progress', where: 'path = ?', whereArgs: [bookPath]);
+    if (maps.isNotEmpty) {
+      return {
+        'chapterIndex': maps.first['chapter_index'] as int,
+        'positionMs': maps.first['position_ms'] as int,
+      };
+    }
+    return null;
+  }
+
+  // --- Settings ---
+  
+  Future<Map<String, List<String>>> getSeriesMappingRules() async {
+    final db = await database;
+    final maps = await db.query('settings', where: 'key = ?', whereArgs: ['series_mapping_rules']);
+    if (maps.isNotEmpty) {
+      final jsonStr = maps.first['value'] as String;
+      try {
+        final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
+        return decoded.map((key, value) => MapEntry(key, List<String>.from(value)));
+      } catch (_) {}
+    }
+    return {};
+  }
+
+  Future<void> saveSeriesMappingRules(Map<String, List<String>> rules) async {
+    final db = await database;
+    await db.insert('settings', {
+      'key': 'series_mapping_rules',
+      'value': jsonEncode(rules),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  // --- Bookmarks ---
+  
+  Future<List<Bookmark>> getBookmarks(String bookPath) async {
+    final db = await database;
+    final maps = await db.query('bookmarks', where: 'book_path = ?', whereArgs: [bookPath], orderBy: 'position_ms ASC');
+    return maps.map((e) => Bookmark(
+      id: e['id'] as int,
+      bookPath: e['book_path'] as String,
+      positionMs: e['position_ms'] as int,
+      label: e['label'] as String?,
+    )).toList();
+  }
+
+  Future<void> addBookmark(String bookPath, int positionMs, String? label) async {
+    final db = await database;
+    await db.insert('bookmarks', {
+      'book_path': bookPath,
+      'position_ms': positionMs,
+      'label': label,
+    });
+  }
+
+  Future<void> removeBookmark(int id) async {
+    final db = await database;
+    await db.delete('bookmarks', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // --- Playlists ---
+
+  Future<List<Playlist>> getPlaylists() async {
+    final db = await database;
+    final maps = await db.query('playlists');
+    final List<Playlist> playlists = [];
+    for (var row in maps) {
+      final id = row['id'] as int;
+      final name = row['name'] as String;
+      
+      final booksQuery = await db.query('playlist_books', where: 'playlist_id = ?', whereArgs: [id]);
+      final bookPaths = booksQuery.map((e) => e['book_path'] as String).toList();
+      
+      playlists.add(Playlist(id: id, name: name, bookPaths: bookPaths));
+    }
+    return playlists;
+  }
+
+  Future<Playlist> createPlaylist(String name) async {
+    final db = await database;
+    final id = await db.insert('playlists', {'name': name});
+    return Playlist(id: id, name: name);
+  }
+
+  Future<void> deletePlaylist(int id) async {
+    final db = await database;
+    await db.delete('playlists', where: 'id = ?', whereArgs: [id]);
+    await db.delete('playlist_books', where: 'playlist_id = ?', whereArgs: [id]);
+  }
+
+  Future<void> addBookToPlaylist(int playlistId, String bookPath) async {
+    final db = await database;
+    // Prevent duplicates
+    final existing = await db.query('playlist_books', where: 'playlist_id = ? AND book_path = ?', whereArgs: [playlistId, bookPath]);
+    if (existing.isEmpty) {
+      await db.insert('playlist_books', {'playlist_id': playlistId, 'book_path': bookPath});
     }
   }
 
-  static Future<void> removeScanPath(String path) async {
-    final paths = await getScanPaths();
-    paths.remove(path);
-    await saveScanPaths(paths);
-  }
-
-  static Future<List<Audiobook>> getAudiobooks() async {
-    final prefs = await SharedPreferences.getInstance();
-    final json = prefs.getString(_keyAudiobooks);
-    if (json == null) return [];
-    try {
-      final list = jsonDecode(json) as List<dynamic>;
-      return list
-          .map((e) => Audiobook.fromJson(
-              e as Map<String, dynamic>,
-              (e['path'] as String?) ?? ''))
-          .toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  static Future<void> saveAudiobooks(List<Audiobook> audiobooks) async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = audiobooks.map((a) => a.toJson()).toList();
-    await prefs.setString(_keyAudiobooks, jsonEncode(list));
+  Future<void> removeBookFromPlaylist(int playlistId, String bookPath) async {
+    final db = await database;
+    await db.delete('playlist_books', where: 'playlist_id = ? AND book_path = ?', whereArgs: [playlistId, bookPath]);
   }
 }
