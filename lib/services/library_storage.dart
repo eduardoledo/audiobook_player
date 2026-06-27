@@ -18,7 +18,7 @@ class LibraryStorage {
     
     _db = await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE scan_paths (
@@ -42,6 +42,37 @@ class LibraryStorage {
           CREATE TABLE settings (
             key TEXT PRIMARY KEY,
             value TEXT
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE playlists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE playlist_books (
+            playlist_id INTEGER,
+            book_path TEXT,
+            FOREIGN KEY(playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE bookmarks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_path TEXT,
+            position_ms INTEGER,
+            label TEXT
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE book_audio_settings (
+            path TEXT PRIMARY KEY,
+            eq_preset TEXT,
+            loudness_enabled INTEGER,
+            loudness_gain REAL,
+            skip_silences INTEGER,
+            pitch_stabilized INTEGER
           )
         ''');
       },
@@ -83,6 +114,18 @@ class LibraryStorage {
             CREATE TABLE settings (
               key TEXT PRIMARY KEY,
               value TEXT
+            )
+          ''');
+        }
+        if (oldVersion < 5) {
+          await db.execute('''
+            CREATE TABLE book_audio_settings (
+              path TEXT PRIMARY KEY,
+              eq_preset TEXT,
+              loudness_enabled INTEGER,
+              loudness_gain REAL,
+              skip_silences INTEGER,
+              pitch_stabilized INTEGER
             )
           ''');
         }
@@ -325,5 +368,64 @@ class LibraryStorage {
   Future<void> removeBookFromPlaylist(int playlistId, String bookPath) async {
     final db = await database;
     await db.delete('playlist_books', where: 'playlist_id = ? AND book_path = ?', whereArgs: [playlistId, bookPath]);
+  }
+
+  // --- Book Audio Settings ---
+
+  Future<Map<String, dynamic>?> getBookAudioSettings(String bookPath) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'book_audio_settings',
+      where: 'path = ?',
+      whereArgs: [bookPath],
+    );
+    if (maps.isNotEmpty) {
+      return maps.first;
+    }
+    return null;
+  }
+
+  Future<void> saveBookAudioSettings({
+    required String bookPath,
+    required String eqPreset,
+    required bool loudnessEnabled,
+    required double loudnessGain,
+    required bool skipSilences,
+    required bool pitchStabilized,
+  }) async {
+    final db = await database;
+    await db.insert(
+      'book_audio_settings',
+      {
+        'path': bookPath,
+        'eq_preset': eqPreset,
+        'loudness_enabled': loudnessEnabled ? 1 : 0,
+        'loudness_gain': loudnessGain,
+        'skip_silences': skipSilences ? 1 : 0,
+        'pitch_stabilized': pitchStabilized ? 1 : 0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String?> getLastPlayedBook() async {
+    final db = await database;
+    final maps = await db.query('settings', where: 'key = ?', whereArgs: ['last_played_book_path']);
+    if (maps.isNotEmpty) {
+      return maps.first['value'] as String?;
+    }
+    return null;
+  }
+
+  Future<void> saveLastPlayedBook(String path) async {
+    final db = await database;
+    await db.insert(
+      'settings',
+      {
+        'key': 'last_played_book_path',
+        'value': path,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 }

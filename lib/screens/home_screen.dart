@@ -6,6 +6,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/home_cubit.dart';
 import '../bloc/home_state.dart';
 import '../models/audiobook.dart';
+import '../services/library_storage.dart';
+import '../service_locator.dart';
 import 'player_screen.dart';
 import 'playlists_tab.dart';
 import 'series_mapping_screen.dart';
@@ -31,6 +33,31 @@ class _HomeScreenView extends StatefulWidget {
 
 class _HomeScreenViewState extends State<_HomeScreenView> {
   int _currentIndex = 0;
+  bool _autoResumeTriggered = false;
+
+  Future<void> _autoResumeLastBook(List<Audiobook> audiobooks) async {
+    if (_autoResumeTriggered || audiobooks.isEmpty) return;
+    _autoResumeTriggered = true;
+    
+    final lastPlayedPath = await getIt<LibraryStorage>().getLastPlayedBook();
+    if (lastPlayedPath != null) {
+      Audiobook? match;
+      for (final b in audiobooks) {
+        if (b.path == lastPlayedPath) {
+          match = b;
+          break;
+        }
+      }
+      if (match != null && mounted) {
+        // Delay slightly to ensure home screen is fully laid out
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            _openPlayer(context, match!);
+          }
+        });
+      }
+    }
+  }
 
   Future<void> _pickDirectory(BuildContext context) async {
     final cubit = context.read<HomeCubit>();
@@ -44,17 +71,26 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
   }
 
   void _openPlayer(BuildContext context, Audiobook audiobook) {
+    final cubit = context.read<HomeCubit>();
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => PlayerScreen(audiobook: audiobook),
+        builder: (context) => BlocProvider.value(
+          value: cubit,
+          child: PlayerScreen(audiobook: audiobook),
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<HomeCubit, HomeState>(
+    return BlocConsumer<HomeCubit, HomeState>(
+      listener: (context, state) {
+        if (!state.isLoading && state.audiobooks.isNotEmpty) {
+          _autoResumeLastBook(state.audiobooks);
+        }
+      },
       builder: (context, state) {
         return Scaffold(
           backgroundColor: const Color(0xFF1A1A1A),
@@ -337,7 +373,44 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                 title: Text(author, style: const TextStyle(color: Color(0xFFE8B86D), fontWeight: FontWeight.bold, fontSize: 18)),
                 children: seriesKeys.map((series) {
                   final books = seriesMap[series]!;
-                  books.sort((a, b) => _naturalCompare(a.title, b.title));
+                  books.sort((a, b) {
+                    // 1. Try sorting by seriesSequence (saga number)
+                    if (a.seriesSequence != null && b.seriesSequence != null) {
+                      final numA = double.tryParse(a.seriesSequence!);
+                      final numB = double.tryParse(b.seriesSequence!);
+                      if (numA != null && numB != null) {
+                        final cmp = numA.compareTo(numB);
+                        if (cmp != 0) return cmp;
+                      } else {
+                        final cmp = _naturalCompare(a.seriesSequence!, b.seriesSequence!);
+                        if (cmp != 0) return cmp;
+                      }
+                    } else if (a.seriesSequence != null) {
+                      return -1;
+                    } else if (b.seriesSequence != null) {
+                      return 1;
+                    }
+
+                    // 2. Try sorting by publishYear
+                    if (a.publishYear != null && b.publishYear != null) {
+                      final numA = int.tryParse(a.publishYear!);
+                      final numB = int.tryParse(b.publishYear!);
+                      if (numA != null && numB != null) {
+                        final cmp = numA.compareTo(numB);
+                        if (cmp != 0) return cmp;
+                      } else {
+                        final cmp = a.publishYear!.compareTo(b.publishYear!);
+                        if (cmp != 0) return cmp;
+                      }
+                    } else if (a.publishYear != null) {
+                      return -1;
+                    } else if (b.publishYear != null) {
+                      return 1;
+                    }
+
+                    // 3. Fallback to natural alphabetical sort on title
+                    return _naturalCompare(a.title, b.title);
+                  });
 
                   if (series != null) {
                     return Theme(
@@ -349,7 +422,9 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                         collapsedIconColor: Colors.white54,
                         title: Text(series, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 15)),
                         children: books.map((book) {
-                          final prefix = book.seriesSequence != null ? 'Book ${book.seriesSequence} - ' : '';
+                          final prefix = book.seriesSequence != null
+                              ? 'Book ${book.seriesSequence} - '
+                              : (book.publishYear != null ? '${book.publishYear} - ' : '');
                           return _buildAudiobookTile(context, state, book, prefix: prefix);
                         }).toList(),
                       ),
@@ -427,7 +502,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (state.fetchingPaths.contains(book.path))
+          if (state.fetchingMetadata.containsKey(book.path))
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16.0),
               child: SizedBox(

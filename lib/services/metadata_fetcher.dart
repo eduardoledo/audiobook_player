@@ -11,24 +11,36 @@ class FetchMessage {
   FetchMessage(this.audiobooks);
 }
 
-class FetchResult {
-  final Audiobook audiobook;
-  FetchResult(this.audiobook);
-}
-
 class MetadataFetcher {
   static Isolate? _isolate;
   static SendPort? _sendPort;
   static final ReceivePort _receivePort = ReceivePort();
 
-  static Future<void> start(void Function(Audiobook) onMetadataFetched) async {
+  static Future<void> start({
+    required void Function(Audiobook) onMetadataFetched,
+    required void Function(String path, String status, double progress) onProgress,
+    required void Function(String path, String error) onFetchError,
+  }) async {
     if (_isolate != null) return;
 
     _receivePort.listen((message) {
       if (message is SendPort) {
         _sendPort = message;
-      } else if (message is FetchResult) {
-        onMetadataFetched(message.audiobook);
+      } else if (message is Map) {
+        final type = message['type'] as String?;
+        if (type == 'progress') {
+          final path = message['path'] as String;
+          final status = message['status'] as String;
+          final progress = (message['progress'] as num).toDouble();
+          onProgress(path, status, progress);
+        } else if (type == 'result') {
+          final audiobook = message['audiobook'] as Audiobook;
+          onMetadataFetched(audiobook);
+        } else if (type == 'error') {
+          final path = message['path'] as String;
+          final error = message['error'] as String;
+          onFetchError(path, error);
+        }
       }
     });
 
@@ -89,6 +101,12 @@ class MetadataFetcher {
       final book = queue.removeAt(0);
 
       try {
+        sendPort.send({
+          'type': 'progress',
+          'path': book.path,
+          'status': 'Analyzing audio files...',
+          'progress': 0.1,
+        });
         final metaFile = File(p.join(book.path, 'metadata.json'));
         final coverPath = p.join(book.path, 'cover.jpg');
         final hasCover = await File(coverPath).exists();
@@ -124,6 +142,13 @@ class MetadataFetcher {
                fileDuration = meta?.durationInSeconds ?? 0.0;
              } catch (_) {}
              
+             final parentDir = p.dirname(path);
+             final grandparentDir = p.dirname(parentDir);
+             String? partName;
+             if (grandparentDir == book.path) {
+               partName = p.basename(parentDir);
+             }
+             
              calculatedChapters.add(Chapter(
                index: i,
                start: cumulativeStart,
@@ -133,7 +158,10 @@ class MetadataFetcher {
                endFormatted: AudiobookScanner.formatDuration(cumulativeStart + fileDuration),
                durationFormatted: AudiobookScanner.formatDuration(fileDuration),
                title: p.basenameWithoutExtension(path),
-               displayTitle: 'Chapter ${i + 1}',
+               displayTitle: partName != null
+                   ? '$partName - Chapter ${i + 1}'
+                   : 'Chapter ${i + 1}',
+               part: partName,
              ));
              
              cumulativeStart += fileDuration;
@@ -144,6 +172,12 @@ class MetadataFetcher {
 
         // 1. If metadata exists, just update duration/chapters if needed and continue
         if (await metaFile.exists() && book.hasMetadataLocally) {
+          sendPort.send({
+            'type': 'progress',
+            'path': book.path,
+            'status': 'Updating local metadata database...',
+            'progress': 0.9,
+          });
           final seriesName = localJson['seriesName'] as String?;
           final seriesPosition = localJson['seriesPosition'] as String?;
 
@@ -167,7 +201,10 @@ class MetadataFetcher {
             chapters: newChapters,
             hasMetadataLocally: true,
           );
-          sendPort.send(FetchResult(updated));
+          sendPort.send({
+            'type': 'result',
+            'audiobook': updated,
+          });
           continue;
         }
 
@@ -180,6 +217,12 @@ class MetadataFetcher {
 
         // 1. iTunes API
         try {
+          sendPort.send({
+            'type': 'progress',
+            'path': book.path,
+            'status': 'Searching iTunes API...',
+            'progress': 0.3,
+          });
           final query = Uri.encodeComponent('${book.title} ${book.author}');
           final url = Uri.parse('https://itunes.apple.com/search?term=$query&media=audiobook&limit=1');
           final response = await http.get(url).timeout(const Duration(seconds: 10));
@@ -207,6 +250,12 @@ class MetadataFetcher {
         String? googleSeriesPos;
         List<String> googleSubjects = [];
         try {
+          sendPort.send({
+            'type': 'progress',
+            'path': book.path,
+            'status': 'Searching Google Books...',
+            'progress': 0.5,
+          });
           final query = Uri.encodeComponent('${book.title} ${book.author}');
           final url = Uri.parse('https://www.googleapis.com/books/v1/volumes?q=$query&maxResults=1');
           final response = await http.get(url).timeout(const Duration(seconds: 10));
@@ -237,6 +286,12 @@ class MetadataFetcher {
         List<String> olSubjects = [];
         String? olCoverI;
         try {
+          sendPort.send({
+            'type': 'progress',
+            'path': book.path,
+            'status': 'Searching OpenLibrary...',
+            'progress': 0.7,
+          });
           final query = Uri.encodeComponent('${book.title} ${book.author}');
           final url = Uri.parse('https://openlibrary.org/search.json?q=$query&limit=1');
           final response = await http.get(url).timeout(const Duration(seconds: 10));
@@ -269,6 +324,12 @@ class MetadataFetcher {
           }
           if (bestCoverUrl != null) {
             try {
+              sendPort.send({
+                'type': 'progress',
+                'path': book.path,
+                'status': 'Downloading cover artwork...',
+                'progress': 0.85,
+              });
               final coverResp = await http.get(Uri.parse(bestCoverUrl)).timeout(const Duration(seconds: 15));
               if (coverResp.statusCode == 200) {
                 final coverFile = File(coverPath);
@@ -280,9 +341,18 @@ class MetadataFetcher {
         }
 
         final isEmpty = bestDesc == null && bestYear == null && bestSeries == null && bestCoverUrl == null;
+        sendPort.send({
+          'type': 'progress',
+          'path': book.path,
+          'status': 'Saving local metadata...',
+          'progress': 0.95,
+        });
         if (isEmpty && !hasCover) {
            await metaFile.writeAsString(jsonEncode({'durationFormatted': durationStr, 'chapters': newChapters.map((c) => c.toJson()).toList()}));
-           sendPort.send(FetchResult(book.copyWith(hasMetadataLocally: true, durationFormatted: durationStr, chapters: newChapters)));
+           sendPort.send({
+             'type': 'result',
+             'audiobook': book.copyWith(hasMetadataLocally: true, durationFormatted: durationStr, chapters: newChapters),
+           });
         } else {
            // Save metadata locally
            final newJson = {
@@ -312,10 +382,19 @@ class MetadataFetcher {
              chapters: newChapters,
              hasMetadataLocally: true,
            );
-           sendPort.send(FetchResult(updated));
+           sendPort.send({
+             'type': 'result',
+             'audiobook': updated,
+           });
         }
-      } catch (e) {
-        // Fallback: silent fail, will be retried next app session since hasMetadataLocally stays false
+      } catch (e, stack) {
+        print("MetadataFetcher error: $e");
+        print(stack);
+        sendPort.send({
+          'type': 'error',
+          'path': book.path,
+          'error': e.toString(),
+        });
       }
       
       // Delay to respect OpenLibrary's rate limit policies

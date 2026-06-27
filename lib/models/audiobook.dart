@@ -135,6 +135,7 @@ class Chapter {
   final String durationFormatted;
   final String title;
   final String displayTitle;
+  final String? part;
 
   const Chapter({
     required this.index,
@@ -146,6 +147,7 @@ class Chapter {
     required this.durationFormatted,
     required this.title,
     required this.displayTitle,
+    this.part,
   });
 
   factory Chapter.fromJson(Map<String, dynamic> json) {
@@ -159,6 +161,7 @@ class Chapter {
       durationFormatted: json['durationFormatted'] as String? ?? '',
       title: json['title'] as String? ?? '',
       displayTitle: json['displayTitle'] as String? ?? 'Chapter ${json['index']}',
+      part: json['part'] as String?,
     );
   }
 
@@ -172,5 +175,6 @@ class Chapter {
         'durationFormatted': durationFormatted,
         'title': title,
         'displayTitle': displayTitle,
+        if (part != null) 'part': part,
       };
 }

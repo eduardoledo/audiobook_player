@@ -1,7 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:typed_data';
 
+import 'package:audio_meta/audio_meta.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:path/path.dart' as p;
 
 import '../models/audiobook.dart';
 import '../service_locator.dart';
@@ -22,21 +28,34 @@ class HomeCubit extends Cubit<HomeState> {
   }
 
   Future<void> _initFetcher() async {
-    await MetadataFetcher.start((updatedBook) async {
-      if (isClosed) return;
-      
-      final currentBooks = List<Audiobook>.from(state.audiobooks);
-      final index = currentBooks.indexWhere((b) => b.path == updatedBook.path);
-      if (index != -1) {
-        currentBooks[index] = updatedBook;
+    await MetadataFetcher.start(
+      onMetadataFetched: (updatedBook) async {
+        if (isClosed) return;
         
-        final newFetching = Set<String>.from(state.fetchingPaths)..remove(updatedBook.path);
-        
-        emit(state.copyWith(audiobooks: currentBooks, fetchingPaths: newFetching));
-        // Persist the changes
-        await _storage.saveAudiobooks(currentBooks);
-      }
-    });
+        final currentBooks = List<Audiobook>.from(state.audiobooks);
+        final index = currentBooks.indexWhere((b) => b.path == updatedBook.path);
+        if (index != -1) {
+          currentBooks[index] = updatedBook;
+          
+          final newFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)..remove(updatedBook.path);
+          
+          emit(state.copyWith(audiobooks: currentBooks, fetchingMetadata: newFetching));
+          // Persist the changes
+          await _storage.saveAudiobooks(currentBooks);
+        }
+      },
+      onProgress: (path, status, progress) {
+        if (isClosed) return;
+        final newFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)
+          ..[path] = BookFetchStatus(status: status, progress: progress);
+        emit(state.copyWith(fetchingMetadata: newFetching));
+      },
+      onFetchError: (path, error) {
+        if (isClosed) return;
+        final newFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)..remove(path);
+        emit(state.copyWith(fetchingMetadata: newFetching, error: error));
+      },
+    );
   }
 
   @override
@@ -44,6 +63,18 @@ class HomeCubit extends Cubit<HomeState> {
     MetadataFetcher.stop();
     _scanSubscription?.cancel();
     return super.close();
+  }
+
+  void _enqueueBooks(List<Audiobook> books) {
+    final booksToFetch = books.where((b) => !b.hasMetadataLocally || b.durationFormatted == '00:00:00.000').toList();
+    if (booksToFetch.isEmpty) return;
+    
+    final newFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata);
+    for (final b in booksToFetch) {
+      newFetching[b.path] = const BookFetchStatus(status: "Queued...", progress: 0.0);
+    }
+    emit(state.copyWith(fetchingMetadata: newFetching));
+    MetadataFetcher.enqueue(booksToFetch);
   }
 
   Future<void> loadData() async {
@@ -60,7 +91,7 @@ class HomeCubit extends Cubit<HomeState> {
       ));
       
       // Enqueue books that need metadata
-      MetadataFetcher.enqueue(books);
+      _enqueueBooks(books);
     } catch (e) {
       emit(state.copyWith(error: e.toString(), isLoading: false));
     }
@@ -114,7 +145,7 @@ class HomeCubit extends Cubit<HomeState> {
         },
         onDone: () async {
           await _storage.saveAudiobooks(state.audiobooks);
-          MetadataFetcher.enqueue(state.audiobooks);
+          _enqueueBooks(state.audiobooks);
           emit(state.copyWith(isScanning: false, scanProgress: null));
           _scanSubscription = null;
         },
@@ -184,7 +215,7 @@ class HomeCubit extends Cubit<HomeState> {
       }
       
       await _storage.saveAudiobooks(state.audiobooks);
-      MetadataFetcher.enqueue(state.audiobooks);
+      _enqueueBooks(state.audiobooks);
       emit(state.copyWith(isScanning: false, scanProgress: null));
       _scanSubscription = null;
       
@@ -225,8 +256,9 @@ class HomeCubit extends Cubit<HomeState> {
   }
 
   Future<void> forceFetchMetadata(Audiobook book) async {
-    final newFetching = Set<String>.from(state.fetchingPaths)..add(book.path);
-    emit(state.copyWith(fetchingPaths: newFetching));
+    final newFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)
+      ..[book.path] = const BookFetchStatus(status: "Initializing...", progress: 0.0);
+    emit(state.copyWith(fetchingMetadata: newFetching));
 
     try {
       final metaFile = File('${book.path}${Platform.pathSeparator}metadata.json');
@@ -235,11 +267,100 @@ class HomeCubit extends Cubit<HomeState> {
       if (await metaFile.exists()) await metaFile.delete();
       if (await coverFile.exists()) await coverFile.delete();
       
-      MetadataFetcher.enqueue([book.copyWith(hasMetadataLocally: false)]);
+      _enqueueBooks([book.copyWith(hasMetadataLocally: false)]);
     } catch (e) {
-      final revertedFetching = Set<String>.from(state.fetchingPaths)..remove(book.path);
-      emit(state.copyWith(fetchingPaths: revertedFetching, error: 'Failed to force fetch: $e'));
+      final revertedFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)..remove(book.path);
+      emit(state.copyWith(fetchingMetadata: revertedFetching, error: 'Failed to force fetch: $e'));
     }
+  }
+
+  Future<Audiobook> ensureChaptersCalculated(Audiobook book) async {
+    // If durations are already calculated, do nothing
+    final needsCalculation = book.chapters.isEmpty || book.chapters.every((c) => c.duration == 0.0);
+    if (!needsCalculation) {
+      debugPrint('ensureChaptersCalculated: Audiobook chapters already calculated for ${book.path}');
+      return book;
+    }
+
+    debugPrint('ensureChaptersCalculated: Starting duration/chapter calculation in isolate for ${book.path}');
+    final result = await Isolate.run(() async {
+      print('ensureChaptersCalculated isolate: scanning files for ${book.path}');
+      double cumulativeStart = 0.0;
+      List<Chapter> calculatedChapters = [];
+      
+      for (int i = 0; i < book.files.length; i++) {
+        final path = book.files[i];
+        print('ensureChaptersCalculated isolate: analyzing file [$i/${book.files.length}]: $path');
+        double fileDuration = 0.0;
+        try {
+          final meta = await AudiobookScanner.getAudioMetadata(File(path));
+          fileDuration = meta?.durationInSeconds ?? 0.0;
+        } catch (_) {}
+        
+        final parentDir = p.dirname(path);
+        final grandparentDir = p.dirname(parentDir);
+        String? partName;
+        if (grandparentDir == book.path) {
+          partName = p.basename(parentDir);
+        }
+        
+        calculatedChapters.add(Chapter(
+          index: i,
+          start: cumulativeStart,
+          end: cumulativeStart + fileDuration,
+          duration: fileDuration,
+          startFormatted: AudiobookScanner.formatDuration(cumulativeStart),
+          endFormatted: AudiobookScanner.formatDuration(cumulativeStart + fileDuration),
+          durationFormatted: AudiobookScanner.formatDuration(fileDuration),
+          title: p.basenameWithoutExtension(path),
+          displayTitle: partName != null
+              ? '$partName - Chapter ${i + 1}'
+              : 'Chapter ${i + 1}',
+          part: partName,
+        ));
+        
+        cumulativeStart += fileDuration;
+      }
+
+      final durationStr = AudiobookScanner.formatDuration(cumulativeStart);
+      print('ensureChaptersCalculated isolate: completed. Total duration: $durationStr');
+      return {
+        'durationFormatted': durationStr,
+        'chapters': calculatedChapters,
+      };
+    });
+
+    final durationStr = result['durationFormatted'] as String;
+    final calculatedChapters = result['chapters'] as List<Chapter>;
+    debugPrint('ensureChaptersCalculated: isolate finished, updating state and database');
+
+    final updatedBook = book.copyWith(
+      durationFormatted: durationStr,
+      chapters: calculatedChapters,
+    );
+
+    // Save/update in local database/state
+    final currentBooks = List<Audiobook>.from(state.audiobooks);
+    final index = currentBooks.indexWhere((b) => b.path == book.path);
+    if (index != -1) {
+      currentBooks[index] = updatedBook;
+      emit(state.copyWith(audiobooks: currentBooks));
+      await _storage.saveAudiobooks(currentBooks);
+    }
+
+    // Also update metadata.json if it exists
+    try {
+      final metaFile = File('${book.path}${Platform.pathSeparator}metadata.json');
+      if (await metaFile.exists()) {
+        final content = await metaFile.readAsString();
+        final json = jsonDecode(content) as Map<String, dynamic>;
+        json['durationFormatted'] = durationStr;
+        json['chapters'] = calculatedChapters.map((c) => c.toJson()).toList();
+        await metaFile.writeAsString(jsonEncode(json));
+      }
+    } catch (_) {}
+
+    return updatedBook;
   }
 
   // --- Playlists ---

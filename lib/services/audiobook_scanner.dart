@@ -70,6 +70,13 @@ class AudiobookScanner {
         bookTitle: segments[2],
       );
     }
+    if (segments.length == 4) {
+      return DirPathMetadata(
+        author: segments[0],
+        saga: segments[1],
+        bookTitle: segments[2],
+      );
+    }
     return null;
   }
 
@@ -80,15 +87,125 @@ class AudiobookScanner {
     return '$h:$m:$s';
   }
 
+  static Duration? _parseMp3Duration(Uint8List bytes, int fileSize) {
+    try {
+      int i = 0;
+      // Skip ID3v2 tag if present
+      if (bytes.length >= 10 &&
+          bytes[0] == 0x49 && // 'I'
+          bytes[1] == 0x44 && // 'D'
+          bytes[2] == 0x33) { // '3'
+        final size = ((bytes[6] & 0x7F) << 21) |
+                     ((bytes[7] & 0x7F) << 14) |
+                     ((bytes[8] & 0x7F) << 7) |
+                     (bytes[9] & 0x7F);
+        i = 10 + size;
+      }
+
+      int mpegOffset = -1;
+      for (; i < bytes.length - 4; i++) {
+        if (bytes[i] == 0xFF && (bytes[i + 1] & 0xE0) == 0xE0) {
+          mpegOffset = i;
+          break;
+        }
+      }
+
+      if (mpegOffset == -1) return null;
+
+      final b1 = bytes[mpegOffset + 1];
+      final b2 = bytes[mpegOffset + 2];
+      final b3 = bytes[mpegOffset + 3];
+
+      final version = (b1 >> 3) & 0x03;
+      final layer = (b1 >> 1) & 0x03;
+      final bitrateIdx = (b2 >> 4) & 0x0F;
+      final sampleRateIdx = (b2 >> 2) & 0x03;
+      final mode = (b3 >> 6) & 0x03;
+
+      if (version == 1 || layer != 1 || bitrateIdx == 0x0F || sampleRateIdx == 0x03) {
+        return null;
+      }
+
+      int sampleRate = 0;
+      if (version == 3) {
+        final srTable = [44100, 48000, 32000, 0];
+        sampleRate = srTable[sampleRateIdx];
+      } else if (version == 2) {
+        final srTable = [22050, 24000, 16000, 0];
+        sampleRate = srTable[sampleRateIdx];
+      } else if (version == 0) {
+        final srTable = [11025, 12000, 8000, 0];
+        sampleRate = srTable[sampleRateIdx];
+      }
+      if (sampleRate == 0) return null;
+
+      int bitrate = 0;
+      if (version == 3) {
+        final brTable = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];
+        bitrate = brTable[bitrateIdx];
+      } else {
+        final brTable = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0];
+        bitrate = brTable[bitrateIdx];
+      }
+      if (bitrate == 0) return null;
+
+      final isMono = (mode == 3);
+      final sideInfoSize = (version == 3)
+          ? (isMono ? 17 : 32)
+          : (isMono ? 9 : 17);
+      final xingOffset = mpegOffset + 4 + sideInfoSize;
+
+      if (xingOffset + 12 <= bytes.length) {
+        final isXing = bytes[xingOffset] == 0x58 &&
+            bytes[xingOffset + 1] == 0x69 &&
+            bytes[xingOffset + 2] == 0x6E &&
+            bytes[xingOffset + 3] == 0x67;
+        final isInfo = bytes[xingOffset] == 0x49 &&
+            bytes[xingOffset + 1] == 0x6E &&
+            bytes[xingOffset + 2] == 0x66 &&
+            bytes[xingOffset + 3] == 0x6F;
+
+        if (isXing || isInfo) {
+          final flags = (bytes[xingOffset + 4] << 24) |
+              (bytes[xingOffset + 5] << 16) |
+              (bytes[xingOffset + 6] << 8) |
+              bytes[xingOffset + 7];
+          if ((flags & 0x01) != 0) {
+            final frames = (bytes[xingOffset + 8] << 24) |
+                (bytes[xingOffset + 9] << 16) |
+                (bytes[xingOffset + 10] << 8) |
+                bytes[xingOffset + 11];
+            final samplesPerFrame = (version == 3) ? 1152 : 576;
+            return Duration(milliseconds: (frames * samplesPerFrame * 1000) ~/ sampleRate);
+          }
+        }
+      }
+
+      final audioSize = fileSize - mpegOffset;
+      return Duration(milliseconds: (audioSize * 8 * 1000) ~/ (bitrate * 1000));
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<AudioFileMetadata?> getAudioMetadata(File file) async {
     try {
-      // Shallow read: Only read the first 512KB to prevent memory exhaustion and slow I/O
-      // ID3 tags or M4B/MP4 moov atoms are almost always at the start or end.
-      // audio_meta handles missing data gracefully if the moov atom is found early.
-      final randomAccessFile = await file.open();
-      final bytes = await randomAccessFile.read(512 * 1024);
-      await randomAccessFile.close();
-      
+      final ext = p.extension(file.path).toLowerCase();
+      final bytes = await file.readAsBytes();
+
+      if (ext == '.mp3') {
+        final mp3Duration = _parseMp3Duration(bytes, bytes.length);
+        if (mp3Duration != null) {
+          return AudioFileMetadata(
+            duration: mp3Duration,
+            bitRate: 0,
+            sampleRate: 0,
+            channelCount: 0,
+            type: AudioType.mp3,
+          );
+        }
+      }
+
       final meta = AudioMeta(Uint8List.fromList(bytes));
       return AudioFileMetadata(
         duration: meta.duration,
@@ -193,10 +310,63 @@ class AudiobookScanner {
     int processedTopDirs = 0;
     int lastSendTime = DateTime.now().millisecondsSinceEpoch;
 
+    final Set<String> scannedBookPaths = {};
+
     Future<void> scanSubTree(String currentPath, String basePath) async {
       if (skipPaths.contains(currentPath)) return;
       final dir = Directory(currentPath);
       if (!await dir.exists()) return;
+
+      // Skip if this path is already recursively handled within a book path we scanned
+      if (scannedBookPaths.any((scannedPath) => p.isWithin(scannedPath, currentPath) || scannedPath == currentPath)) {
+        return;
+      }
+
+      final base = p.normalize(basePath);
+      final normalizedCurrent = p.normalize(currentPath);
+      String relative = '';
+      if (normalizedCurrent.startsWith(base) && normalizedCurrent != base) {
+        relative = normalizedCurrent.substring(base.endsWith(p.separator) ? base.length : base.length + 1);
+      }
+      final segments = p.split(relative).where((s) => s.isNotEmpty).toList();
+
+      if (segments.length == 4) {
+        final bookPath = p.dirname(currentPath);
+        if (!scannedBookPaths.contains(bookPath)) {
+          scannedBookPaths.add(bookPath);
+          
+          List<File> audioFiles = [];
+          try {
+            final bookDir = Directory(bookPath);
+            final allEntities = await bookDir.list(recursive: true).toList();
+            final files = allEntities
+                .whereType<File>()
+                .where((f) => _audioExtensions.contains(p.extension(f.path).toLowerCase()))
+                .toList();
+            files.sort((a, b) {
+              final relA = p.relative(a.path, from: bookPath);
+              final relB = p.relative(b.path, from: bookPath);
+              return relA.compareTo(relB);
+            });
+            audioFiles.addAll(files);
+          } catch (_) {}
+
+          if (audioFiles.isNotEmpty) {
+            final audiobook = await _loadAudiobook(
+              audioFiles: audioFiles,
+              dirPath: bookPath,
+              baseDirectoryPath: basePath,
+              seriesRules: seriesRules,
+              globalPatterns: globalPatterns,
+              sagaCodes: sagaCodes,
+            );
+            if (audiobook != null) {
+              sendPort.send(ScanMessage(audiobook: audiobook, progress: processedTopDirs / totalTopDirs));
+            }
+          }
+        }
+        return;
+      }
 
       List<FileSystemEntity> entities = [];
       try {
@@ -210,7 +380,15 @@ class AudiobookScanner {
           entity is File && _audioExtensions.contains(p.extension(entity.path).toLowerCase()));
       
       if (isAudioDirectory) {
-        final audiobook = await _loadAudiobook(entities, basePath, seriesRules, globalPatterns, sagaCodes);
+        final audioFiles = entities.whereType<File>().where((f) => _audioExtensions.contains(p.extension(f.path).toLowerCase())).toList();
+        final audiobook = await _loadAudiobook(
+          audioFiles: audioFiles,
+          dirPath: currentPath,
+          baseDirectoryPath: basePath,
+          seriesRules: seriesRules,
+          globalPatterns: globalPatterns,
+          sagaCodes: sagaCodes,
+        );
         if (audiobook != null) {
           sendPort.send(ScanMessage(audiobook: audiobook, progress: processedTopDirs / totalTopDirs));
         }
@@ -231,7 +409,15 @@ class AudiobookScanner {
       var isAudioDirectory = rootEntities.any((entity) =>
           entity is File && _audioExtensions.contains(p.extension(entity.path).toLowerCase()));
       if (isAudioDirectory) {
-        final audiobook = await _loadAudiobook(rootEntities, directoryPath, seriesRules, globalPatterns, sagaCodes);
+        final audioFiles = rootEntities.whereType<File>().where((f) => _audioExtensions.contains(p.extension(f.path).toLowerCase())).toList();
+        final audiobook = await _loadAudiobook(
+          audioFiles: audioFiles,
+          dirPath: directoryPath,
+          baseDirectoryPath: directoryPath,
+          seriesRules: seriesRules,
+          globalPatterns: globalPatterns,
+          sagaCodes: sagaCodes,
+        );
         if (audiobook != null) {
           sendPort.send(ScanMessage(audiobook: audiobook, progress: 0.0));
         }
@@ -254,16 +440,15 @@ class AudiobookScanner {
   }
 
   /// Loads audiobook metadata from a file. Looks for chapters.json in same directory.
-  static Future<Audiobook?> _loadAudiobook(
-      List<FileSystemEntity> entities, 
-      String baseDirectoryPath, 
-      Map<String, List<String>>? seriesRules,
-      List<String> globalPatterns,
-      Map<String, String> sagaCodes) async {
-    final audioFiles = entities.whereType<File>().where((f) => _audioExtensions.contains(p.extension(f.path).toLowerCase())).toList();
+  static Future<Audiobook?> _loadAudiobook({
+    required List<File> audioFiles,
+    required String dirPath,
+    required String baseDirectoryPath, 
+    Map<String, List<String>>? seriesRules,
+    required List<String> globalPatterns,
+    required Map<String, String> sagaCodes,
+  }) async {
     if (audioFiles.isEmpty) return null;
-    final dir = audioFiles.first.parent;
-    final dirPath = dir.path;
 
     final dirPathMetadata = parseDirPath(dirPath, baseDirectoryPath);
     String bookTitle = dirPathMetadata?.bookTitle ?? p.basename(dirPath);
@@ -392,19 +577,29 @@ class AudiobookScanner {
       files: audioFiles.map((file) => file.path).toList(),
       durationFormatted: '00:00:00.000', // Postponed calculation
       totalChapters: audioFiles.length,
-      chapters: [
-        Chapter(
-          index: 1,
+      chapters: List.generate(audioFiles.length, (i) {
+        final filePath = audioFiles[i].path;
+        final parentDir = p.dirname(filePath);
+        final grandparentDir = p.dirname(parentDir);
+        String? partName;
+        if (grandparentDir == dirPath) {
+          partName = p.basename(parentDir);
+        }
+        return Chapter(
+          index: i + 1,
           start: 0,
           end: 0,
           duration: 0,
           startFormatted: '00:00:00.000',
           endFormatted: '00:00:00.000',
           durationFormatted: '00:00:00.000',
-          title: '001',
-          displayTitle: 'Chapter 1',
-        ),
-      ],
+          title: p.basenameWithoutExtension(filePath),
+          displayTitle: partName != null
+              ? '$partName - Chapter ${i + 1}'
+              : 'Chapter ${i + 1}',
+          part: partName,
+        );
+      }),
     );
   }
 }

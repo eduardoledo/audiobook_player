@@ -2,6 +2,15 @@ import 'package:equatable/equatable.dart';
 import '../models/audiobook.dart';
 import '../models/playlist.dart';
 
+class BookFetchStatus extends Equatable {
+  final String status;
+  final double progress;
+  const BookFetchStatus({required this.status, required this.progress});
+
+  @override
+  List<Object?> get props => [status, progress];
+}
+
 class HomeState extends Equatable {
   final List<String> scanPaths;
   final List<Audiobook> audiobooks;
@@ -10,7 +19,7 @@ class HomeState extends Equatable {
   final bool isScanning;
   final double? scanProgress;
   final String? error;
-  final Set<String> fetchingPaths;
+  final Map<String, BookFetchStatus> fetchingMetadata;
 
   const HomeState({
     this.scanPaths = const [],
@@ -20,7 +29,7 @@ class HomeState extends Equatable {
     this.isScanning = false,
     this.scanProgress,
     this.error,
-    this.fetchingPaths = const {},
+    this.fetchingMetadata = const {},
   });
 
   HomeState copyWith({
@@ -31,7 +40,7 @@ class HomeState extends Equatable {
     bool? isScanning,
     double? scanProgress,
     String? error,
-    Set<String>? fetchingPaths,
+    Map<String, BookFetchStatus>? fetchingMetadata,
   }) {
     return HomeState(
       scanPaths: scanPaths ?? this.scanPaths,
@@ -41,7 +50,7 @@ class HomeState extends Equatable {
       isScanning: isScanning ?? this.isScanning,
       scanProgress: scanProgress ?? this.scanProgress,
       error: error ?? this.error,
-      fetchingPaths: fetchingPaths ?? this.fetchingPaths,
+      fetchingMetadata: fetchingMetadata ?? this.fetchingMetadata,
     );
   }
 
@@ -54,7 +63,7 @@ class HomeState extends Equatable {
       isScanning: isScanning,
       scanProgress: scanProgress,
       error: null,
-      fetchingPaths: fetchingPaths,
+      fetchingMetadata: fetchingMetadata,
     );
   }
 
@@ -67,6 +76,6 @@ class HomeState extends Equatable {
         isScanning,
         scanProgress,
         error,
-        fetchingPaths,
+        fetchingMetadata,
       ];
 }
