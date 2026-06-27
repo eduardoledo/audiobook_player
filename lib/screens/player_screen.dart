@@ -38,8 +38,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _initPlayer();
     _loadBookmarks();
     
-    // Prioritize API fetch for this book when opened
-    MetadataFetcher.enqueue([widget.audiobook.copyWith(hasMetadataLocally: false)]);
+    // Only query online APIs if the book does not have metadata locally
+    if (!widget.audiobook.hasMetadataLocally) {
+      MetadataFetcher.enqueue([widget.audiobook]);
+    }
   }
 
   Future<void> _initPlayer() async {

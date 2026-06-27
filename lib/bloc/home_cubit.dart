@@ -90,8 +90,8 @@ class HomeCubit extends Cubit<HomeState> {
         isLoading: false,
       ));
       
-      // Enqueue books that need metadata
-      _enqueueBooks(books);
+      // Automatic metadata update on load disabled to prevent unrequested internet fetches
+      // _enqueueBooks(books);
     } catch (e) {
       emit(state.copyWith(error: e.toString(), isLoading: false));
     }
@@ -145,7 +145,8 @@ class HomeCubit extends Cubit<HomeState> {
         },
         onDone: () async {
           await _storage.saveAudiobooks(state.audiobooks);
-          _enqueueBooks(state.audiobooks);
+          // Automatic metadata update on scan completion disabled to prevent unrequested internet fetches
+          // _enqueueBooks(state.audiobooks);
           emit(state.copyWith(isScanning: false, scanProgress: null));
           _scanSubscription = null;
         },
@@ -215,7 +216,8 @@ class HomeCubit extends Cubit<HomeState> {
       }
       
       await _storage.saveAudiobooks(state.audiobooks);
-      _enqueueBooks(state.audiobooks);
+      // Automatic metadata update on rescan completion disabled to prevent unrequested internet fetches
+      // _enqueueBooks(state.audiobooks);
       emit(state.copyWith(isScanning: false, scanProgress: null));
       _scanSubscription = null;
       
