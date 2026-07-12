@@ -18,14 +18,15 @@ class EqAnalyzerSheet extends StatefulWidget {
   State<EqAnalyzerSheet> createState() => _EqAnalyzerSheetState();
 }
 
-class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProviderStateMixin {
+class _EqAnalyzerSheetState extends State<EqAnalyzerSheet>
+    with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   bool _isAnalyzing = true;
   String _statusText = 'Analyzing audio content...';
   String _suggestedPresetName = 'Flat';
   String _reasonText = 'Analyzing frequency signature...';
   AudioEqPreset? _recommendedPreset;
-  
+
   AndroidEqualizer? _equalizer;
   AndroidEqualizerParameters? _eqParameters;
   List<double> _bandGains = [];
@@ -57,7 +58,7 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
         final params = await eq.parameters;
         final gains = <double>[];
         for (var band in params.bands) {
-          gains.add(await band.gain);
+          gains.add(band.gain);
         }
         if (mounted) {
           setState(() {
@@ -76,7 +77,7 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
     final enhancer = getIt<AudioPlayerService>().loudnessEnhancer;
     if (enhancer != null) {
       try {
-        final targetGainMb = await enhancer.targetGain;
+        final targetGainMb = enhancer.targetGain;
         final gainDb = targetGainMb / 100.0;
         if (mounted) {
           setState(() {
@@ -88,11 +89,14 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
     }
 
     try {
-      final settings = await getIt<LibraryStorage>().getBookAudioSettings(widget.audiobook.path);
+      final settings = await getIt<LibraryStorage>().getBookAudioSettings(
+        widget.audiobook.path,
+      );
       if (settings != null) {
         final eqPresetName = settings['eq_preset'] as String?;
         final loudnessEnabled = (settings['loudness_enabled'] as int?) == 1;
-        final loudnessGain = (settings['loudness_gain'] as num?)?.toDouble() ?? 3.0;
+        final loudnessGain =
+            (settings['loudness_gain'] as num?)?.toDouble() ?? 3.0;
         final skipSilences = (settings['skip_silences'] as int?) == 1;
         final pitchStabilized = (settings['pitch_stabilized'] as int?) == 1;
 
@@ -129,7 +133,7 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
       'Analyzing frequency spectrum...',
       'Calculating dynamic range...',
       'Checking vocal clarity index...',
-      'Analysis complete!'
+      'Analysis complete!',
     ];
 
     int index = 0;
@@ -153,25 +157,29 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
   void _finalizeAnalysis() {
     // Generate recommendation based on book properties
     final path = widget.audiobook.path.toLowerCase();
-    
+
     // Simple pseudo-random but stable logic based on file name length and format
     final score = widget.audiobook.title.length % 4;
-    
+
     AudioEqPreset recommended;
     String reason;
-    
+
     if (path.endsWith('.m4b') || score == 0) {
       recommended = AudioEqPreset.presets[1]; // Vocal Clarity
-      reason = 'Standard narrative format detected. Mids are boosted to maximize speech clarity and narrator intelligibility.';
+      reason =
+          'Standard narrative format detected. Mids are boosted to maximize speech clarity and narrator intelligibility.';
     } else if (path.contains('low') || score == 1) {
       recommended = AudioEqPreset.presets[3]; // Treble Boost
-      reason = 'Mild high-frequency attenuation detected. Treble boosted to enhance presence and clarity of muffled speech.';
+      reason =
+          'Mild high-frequency attenuation detected. Treble boosted to enhance presence and clarity of muffled speech.';
     } else if (score == 2) {
       recommended = AudioEqPreset.presets[2]; // De-Rumble
-      reason = 'Low-frequency room resonance / mic rumble detected. Lows attenuated to clean up low-end muddy frequencies.';
+      reason =
+          'Low-frequency room resonance / mic rumble detected. Lows attenuated to clean up low-end muddy frequencies.';
     } else {
       recommended = AudioEqPreset.presets[4]; // Warm Presence
-      reason = 'Dry or harsh vocal resonance detected. Low-mids boosted to add rich warmth and fullness to the narration.';
+      reason =
+          'Dry or harsh vocal resonance detected. Low-mids boosted to add rich warmth and fullness to the narration.';
     }
 
     if (mounted) {
@@ -263,14 +271,19 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
                     const SizedBox(height: 16),
                     Text(
                       _statusText,
-                      style: const TextStyle(color: Colors.white70, fontSize: 14),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     const SizedBox(
                       width: 150,
                       child: LinearProgressIndicator(
                         backgroundColor: Colors.white12,
-                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFE8B86D)),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFFE8B86D),
+                        ),
                         minHeight: 2,
                       ),
                     ),
@@ -297,23 +310,30 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
       children: [
         const Text(
           'Advanced Audio Filters',
-          style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 12),
-        
+
         // Voice Booster (Loudness Enhancer)
         _buildFilterCard(
           icon: Icons.volume_up_outlined,
           title: 'Vocal Booster',
-          description: 'Amplifies low speech dynamics. Makes quiet narrators much clearer.',
+          description:
+              'Amplifies low speech dynamics. Makes quiet narrators much clearer.',
           trailing: Switch(
-            activeColor: const Color(0xFFE8B86D),
+            activeThumbColor: const Color(0xFFE8B86D),
             value: _loudnessEnabled,
             onChanged: (val) async {
               setState(() {
                 _loudnessEnabled = val;
               });
-              await getIt<AudioPlayerService>().setLoudnessEnhancerGain(val ? _loudnessGain : 0.0);
+              await getIt<AudioPlayerService>().setLoudnessEnhancerGain(
+                val ? _loudnessGain : 0.0,
+              );
               await _saveSettings();
             },
           ),
@@ -322,7 +342,10 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
                   padding: const EdgeInsets.only(top: 8.0),
                   child: Row(
                     children: [
-                      const Text('Boost Level:', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                      const Text(
+                        'Boost Level:',
+                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                      ),
                       Expanded(
                         child: SliderTheme(
                           data: SliderTheme.of(context).copyWith(
@@ -330,7 +353,9 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
                             activeTrackColor: const Color(0xFFE8B86D),
                             inactiveTrackColor: Colors.white12,
                             thumbColor: const Color(0xFFE8B86D),
-                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                            thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 6,
+                            ),
                           ),
                           child: Slider(
                             value: _loudnessGain,
@@ -343,14 +368,22 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
                                 _loudnessGain = val;
                               });
                               if (_loudnessEnabled) {
-                                await getIt<AudioPlayerService>().setLoudnessEnhancerGain(val);
+                                await getIt<AudioPlayerService>()
+                                    .setLoudnessEnhancerGain(val);
                               }
                               await _saveSettings();
                             },
                           ),
                         ),
                       ),
-                      Text('${_loudnessGain.toStringAsFixed(0)} dB', style: const TextStyle(color: Color(0xFFE8B86D), fontSize: 11, fontWeight: FontWeight.bold)),
+                      Text(
+                        '${_loudnessGain.toStringAsFixed(0)} dB',
+                        style: const TextStyle(
+                          color: Color(0xFFE8B86D),
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ],
                   ),
                 )
@@ -362,9 +395,10 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
         _buildFilterCard(
           icon: Icons.bolt_outlined,
           title: 'Skip Silences',
-          description: 'Automatically trims long gaps or silent sections in narration.',
+          description:
+              'Automatically trims long gaps or silent sections in narration.',
           trailing: Switch(
-            activeColor: const Color(0xFFE8B86D),
+            activeThumbColor: const Color(0xFFE8B86D),
             value: _skipSilences,
             onChanged: (val) async {
               setState(() {
@@ -374,7 +408,11 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(val ? 'Silence skipper enabled.' : 'Silence skipper disabled.'),
+                    content: Text(
+                      val
+                          ? 'Silence skipper enabled.'
+                          : 'Silence skipper disabled.',
+                    ),
                     backgroundColor: const Color(0xFFE8B86D),
                     duration: const Duration(seconds: 1),
                   ),
@@ -389,9 +427,10 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
         _buildFilterCard(
           icon: Icons.music_note_outlined,
           title: 'Pitch Stabilization',
-          description: 'Keeps narrator pitch natural when playing at higher speeds.',
+          description:
+              'Keeps narrator pitch natural when playing at higher speeds.',
           trailing: Switch(
-            activeColor: const Color(0xFFE8B86D),
+            activeThumbColor: const Color(0xFFE8B86D),
             value: _pitchStabilized,
             onChanged: (val) async {
               setState(() {
@@ -401,7 +440,11 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(val ? 'Pitch stabilization active.' : 'Pitch stabilization disabled.'),
+                    content: Text(
+                      val
+                          ? 'Pitch stabilization active.'
+                          : 'Pitch stabilization disabled.',
+                    ),
                     backgroundColor: const Color(0xFFE8B86D),
                     duration: const Duration(seconds: 1),
                   ),
@@ -439,12 +482,19 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       description,
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5),
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
@@ -452,7 +502,7 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
               trailing,
             ],
           ),
-          if (expandedContent != null) expandedContent,
+          ?expandedContent,
         ],
       ),
     );
@@ -466,7 +516,9 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
         animation: _animationController,
         builder: (context, child) {
           return CustomPaint(
-            painter: WaveformPainter(phase: _animationController.value * 2 * math.pi),
+            painter: WaveformPainter(
+              phase: _animationController.value * 2 * math.pi,
+            ),
           );
         },
       ),
@@ -478,7 +530,10 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
       decoration: BoxDecoration(
         color: const Color(0xFF282828),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8B86D).withValues(alpha: 0.3), width: 1.5),
+        border: Border.all(
+          color: const Color(0xFFE8B86D).withValues(alpha: 0.3),
+          width: 1.5,
+        ),
       ),
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -486,7 +541,11 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
         children: [
           Row(
             children: [
-              const Icon(Icons.analytics_outlined, color: Color(0xFFE8B86D), size: 24),
+              const Icon(
+                Icons.analytics_outlined,
+                color: Color(0xFFE8B86D),
+                size: 24,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Column(
@@ -512,18 +571,30 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFE8B86D),
                     foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                   ),
                   onPressed: () => _applyPreset(_recommendedPreset!),
-                  child: const Text('Apply', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    'Apply',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
             ],
           ),
           const SizedBox(height: 12),
           Text(
             _reasonText,
-            style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              height: 1.4,
+            ),
           ),
         ],
       ),
@@ -558,7 +629,10 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
 
     final params = _eqParameters;
     if (params == null || _bandGains.length != params.bands.length) {
-      return const Text('Failed to load equalizer.', style: TextStyle(color: Colors.white54));
+      return const Text(
+        'Failed to load equalizer.',
+        style: TextStyle(color: Colors.white54),
+      );
     }
 
     final minDb = params.minDecibels;
@@ -572,7 +646,11 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
           children: [
             const Text(
               'Equalizer Controls',
-              style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             PopupMenuButton<AudioEqPreset>(
               icon: const Icon(Icons.tune, color: Color(0xFFE8B86D)),
@@ -594,8 +672,10 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
               final band = params.bands[index];
               final gain = _bandGains[index];
               final freq = band.centerFrequency;
-              
-              String freqLabel = freq < 1000 ? '${freq.round()}Hz' : '${(freq / 1000).toStringAsFixed(1)}kHz';
+
+              String freqLabel = freq < 1000
+                  ? '${freq.round()}Hz'
+                  : '${(freq / 1000).toStringAsFixed(1)}kHz';
 
               return Column(
                 children: [
@@ -612,8 +692,12 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
                           activeTrackColor: const Color(0xFFE8B86D),
                           inactiveTrackColor: Colors.white12,
                           thumbColor: const Color(0xFFE8B86D),
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                          thumbShape: const RoundSliderThumbShape(
+                            enabledThumbRadius: 6,
+                          ),
+                          overlayShape: const RoundSliderOverlayShape(
+                            overlayRadius: 12,
+                          ),
                         ),
                         child: Slider(
                           value: gain,
@@ -627,7 +711,11 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet> with SingleTickerProv
                   const SizedBox(height: 8),
                   Text(
                     freqLabel,
-                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
               );
@@ -666,7 +754,9 @@ class WaveformPainter extends CustomPainter {
       // First wave
       final relativeX = x / size.width;
       final envelope = math.sin(relativeX * math.pi); // Fades at edges
-      final y1 = midY + math.sin(relativeX * wavesCount * math.pi + phase) * 30 * envelope;
+      final y1 =
+          midY +
+          math.sin(relativeX * wavesCount * math.pi + phase) * 30 * envelope;
       if (x == 0) {
         path1.moveTo(x, y1);
       } else {
@@ -674,7 +764,11 @@ class WaveformPainter extends CustomPainter {
       }
 
       // Second phase-shifted wave
-      final y2 = midY + math.sin(relativeX * wavesCount * math.pi - phase + math.pi/2) * 20 * envelope;
+      final y2 =
+          midY +
+          math.sin(relativeX * wavesCount * math.pi - phase + math.pi / 2) *
+              20 *
+              envelope;
       if (x == 0) {
         path2.moveTo(x, y2);
       } else {

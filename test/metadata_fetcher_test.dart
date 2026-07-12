@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:audiobook_player/services/metadata_fetcher.dart';
 
 void main() {
   group('MetadataFetcher Extraction Validation', () {
@@ -7,10 +6,14 @@ void main() {
       // We can validate extract series logic by checking titles containing pattern "(SeriesName, #Position)"
       // Let's create helper check for the regex pattern implemented inside MetadataFetcher:
       // RegExp(r'\((.*?)(?:,\s*Book\s*(\d+)|(?:,\s*)?#(\d+))\)')
-      
-      final pattern = RegExp(r'\((.*?)(?:,\s*Book\s*(\d+)|(?:,\s*)?#(\d+))\)', caseSensitive: false);
-      
-      String testTitle1 = 'Harry Potter and the Sorcerer\'s Stone (Harry Potter, #1)';
+
+      final pattern = RegExp(
+        r'\((.*?)(?:,\s*Book\s*(\d+)|(?:,\s*)?#(\d+))\)',
+        caseSensitive: false,
+      );
+
+      String testTitle1 =
+          'Harry Potter and the Sorcerer\'s Stone (Harry Potter, #1)';
       final match1 = pattern.firstMatch(testTitle1);
       expect(match1, isNotNull);
       expect(match1!.group(1)?.trim(), 'Harry Potter');
