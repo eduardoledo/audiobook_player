@@ -126,12 +126,12 @@ void main() {
 
   group('AudiobookScanner MP3 Duration Parser', () {
     test('Correctly parses or returns null instead of hanging on mock MP3 bytes', () async {
-      await import_helper();
+      await importHelper();
     });
   });
 }
 
-Future<void> import_helper() async {
+Future<void> importHelper() async {
   // Use a localized temp directory within the workspace to follow guidelines
   final dir = Directory('./test_temp');
   if (!await dir.exists()) await dir.create();

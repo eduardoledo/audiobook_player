@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import '../models/audiobook.dart';
@@ -64,6 +65,12 @@ class MetadataFetcher {
     _sendPort = null;
   }
 
+  static void clearQueue() {
+    if (_sendPort != null) {
+      _sendPort!.send('cancel');
+    }
+  }
+
   static Future<void> _isolateWorker(SendPort sendPort) async {
     final receivePort = ReceivePort();
     sendPort.send(receivePort.sendPort);
@@ -82,6 +89,8 @@ class MetadataFetcher {
           await _processQueue(queue, sendPort);
           isProcessing = false;
         }
+      } else if (message == 'cancel') {
+        queue.clear();
       }
     });
   }
@@ -388,8 +397,8 @@ class MetadataFetcher {
            });
         }
       } catch (e, stack) {
-        print("MetadataFetcher error: $e");
-        print(stack);
+        debugPrint("MetadataFetcher error: $e");
+        debugPrint(stack.toString());
         sendPort.send({
           'type': 'error',
           'path': book.path,

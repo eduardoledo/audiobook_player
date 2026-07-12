@@ -2,9 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:typed_data';
 
-import 'package:audio_meta/audio_meta.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:path/path.dart' as p;
@@ -38,8 +36,13 @@ class HomeCubit extends Cubit<HomeState> {
           currentBooks[index] = updatedBook;
           
           final newFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)..remove(updatedBook.path);
+          final newTotal = newFetching.isEmpty ? 0 : state.metadataFetchTotalCount;
           
-          emit(state.copyWith(audiobooks: currentBooks, fetchingMetadata: newFetching));
+          emit(state.copyWith(
+            audiobooks: currentBooks,
+            fetchingMetadata: newFetching,
+            metadataFetchTotalCount: newTotal,
+          ));
           // Persist the changes
           await _storage.saveAudiobooks(currentBooks);
         }
@@ -53,7 +56,8 @@ class HomeCubit extends Cubit<HomeState> {
       onFetchError: (path, error) {
         if (isClosed) return;
         final newFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)..remove(path);
-        emit(state.copyWith(fetchingMetadata: newFetching, error: error));
+        final newTotal = newFetching.isEmpty ? 0 : state.metadataFetchTotalCount;
+        emit(state.copyWith(fetchingMetadata: newFetching, error: error, metadataFetchTotalCount: newTotal));
       },
     );
   }
@@ -73,7 +77,12 @@ class HomeCubit extends Cubit<HomeState> {
     for (final b in booksToFetch) {
       newFetching[b.path] = const BookFetchStatus(status: "Queued...", progress: 0.0);
     }
-    emit(state.copyWith(fetchingMetadata: newFetching));
+    
+    final newTotal = state.fetchingMetadata.isEmpty 
+        ? booksToFetch.length 
+        : state.metadataFetchTotalCount + booksToFetch.length;
+
+    emit(state.copyWith(fetchingMetadata: newFetching, metadataFetchTotalCount: newTotal));
     MetadataFetcher.enqueue(booksToFetch);
   }
 
@@ -232,6 +241,14 @@ class HomeCubit extends Cubit<HomeState> {
     emit(state.copyWith(isScanning: false, scanProgress: null));
   }
 
+  void cancelMetadataFetch() {
+    MetadataFetcher.clearQueue();
+    emit(state.copyWith(
+      fetchingMetadata: {},
+      metadataFetchTotalCount: 0,
+    ));
+  }
+
   Future<void> removePath(String path) async {
     if (state.isScanning) return;
     
@@ -260,7 +277,8 @@ class HomeCubit extends Cubit<HomeState> {
   Future<void> forceFetchMetadata(Audiobook book) async {
     final newFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)
       ..[book.path] = const BookFetchStatus(status: "Initializing...", progress: 0.0);
-    emit(state.copyWith(fetchingMetadata: newFetching));
+    final newTotal = state.fetchingMetadata.isEmpty ? 1 : state.metadataFetchTotalCount + 1;
+    emit(state.copyWith(fetchingMetadata: newFetching, metadataFetchTotalCount: newTotal));
 
     try {
       final metaFile = File('${book.path}${Platform.pathSeparator}metadata.json');
@@ -272,7 +290,8 @@ class HomeCubit extends Cubit<HomeState> {
       _enqueueBooks([book.copyWith(hasMetadataLocally: false)]);
     } catch (e) {
       final revertedFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)..remove(book.path);
-      emit(state.copyWith(fetchingMetadata: revertedFetching, error: 'Failed to force fetch: $e'));
+      final newTotal = revertedFetching.isEmpty ? 0 : state.metadataFetchTotalCount;
+      emit(state.copyWith(fetchingMetadata: revertedFetching, error: 'Failed to force fetch: $e', metadataFetchTotalCount: newTotal));
     }
   }
 
@@ -286,13 +305,13 @@ class HomeCubit extends Cubit<HomeState> {
 
     debugPrint('ensureChaptersCalculated: Starting duration/chapter calculation in isolate for ${book.path}');
     final result = await Isolate.run(() async {
-      print('ensureChaptersCalculated isolate: scanning files for ${book.path}');
+      debugPrint('ensureChaptersCalculated isolate: scanning files for ${book.path}');
       double cumulativeStart = 0.0;
       List<Chapter> calculatedChapters = [];
       
       for (int i = 0; i < book.files.length; i++) {
         final path = book.files[i];
-        print('ensureChaptersCalculated isolate: analyzing file [$i/${book.files.length}]: $path');
+        debugPrint('ensureChaptersCalculated isolate: analyzing file [$i/${book.files.length}]: $path');
         double fileDuration = 0.0;
         try {
           final meta = await AudiobookScanner.getAudioMetadata(File(path));
@@ -325,7 +344,7 @@ class HomeCubit extends Cubit<HomeState> {
       }
 
       final durationStr = AudiobookScanner.formatDuration(cumulativeStart);
-      print('ensureChaptersCalculated isolate: completed. Total duration: $durationStr');
+      debugPrint('ensureChaptersCalculated isolate: completed. Total duration: $durationStr');
       return {
         'durationFormatted': durationStr,
         'chapters': calculatedChapters,

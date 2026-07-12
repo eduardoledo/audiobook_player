@@ -51,9 +51,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final positionMs = progress?['positionMs'] ?? 0;
     
     // Ensure durations are calculated if needed before setting audiobook
+    if (!mounted) return;
     final cubit = context.read<HomeCubit>();
     debugPrint('PlayerScreen: ensuring chapters are calculated...');
     final book = await cubit.ensureChaptersCalculated(widget.audiobook);
+    if (!mounted) return;
     debugPrint('PlayerScreen: chapters check completed, setting audiobook details');
 
     await _playerService.setAudiobook(

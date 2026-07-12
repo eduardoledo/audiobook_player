@@ -155,6 +155,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
       children: [
         _buildAddFolderSection(context, state),
         if (state.isScanning) _buildScanningProgress(context, state),
+        if (state.fetchingMetadata.isNotEmpty) _buildMetadataProgress(context, state),
         if (state.error != null) _buildErrorBanner(state.error!),
         Expanded(
           child: state.audiobooks.isEmpty && !state.isLoading && !state.isScanning
@@ -296,6 +297,48 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                 onPressed: () => context.read<HomeCubit>().cancelScan(),
                 icon: const Icon(Icons.stop_circle, color: Colors.redAccent, size: 20),
                 label: const Text('Stop', style: TextStyle(color: Colors.redAccent)),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: pct,
+            backgroundColor: Colors.white.withValues(alpha: 0.1),
+            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFE8B86D)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetadataProgress(BuildContext context, HomeState state) {
+    final total = state.metadataFetchTotalCount;
+    final remaining = state.fetchingMetadata.length;
+    final completed = total - remaining;
+    final pct = total > 0 ? (completed / total) : 0.0;
+
+    return Container(
+      color: const Color(0xFF252525),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Updating metadata... $completed/$total',
+                style: const TextStyle(color: Color(0xFFE8B86D), fontWeight: FontWeight.w500),
+              ),
+              TextButton.icon(
+                onPressed: () => context.read<HomeCubit>().cancelMetadataFetch(),
+                icon: const Icon(Icons.stop_circle, color: Colors.redAccent, size: 20),
+                label: const Text('Cancel', style: TextStyle(color: Colors.redAccent)),
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   minimumSize: Size.zero,

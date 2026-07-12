@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/audiobook.dart';
 import '../models/audio_eq_profile.dart';
@@ -226,7 +227,7 @@ class AudioPlayerService {
         await band.setGain(clampedGain);
       }
     } catch (e) {
-      print('Error applying EQ preset: $e');
+      debugPrint('Error applying EQ preset: $e');
     }
   }
 

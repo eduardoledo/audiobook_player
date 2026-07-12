@@ -20,6 +20,7 @@ class HomeState extends Equatable {
   final double? scanProgress;
   final String? error;
   final Map<String, BookFetchStatus> fetchingMetadata;
+  final int metadataFetchTotalCount;
 
   const HomeState({
     this.scanPaths = const [],
@@ -30,6 +31,7 @@ class HomeState extends Equatable {
     this.scanProgress,
     this.error,
     this.fetchingMetadata = const {},
+    this.metadataFetchTotalCount = 0,
   });
 
   HomeState copyWith({
@@ -41,6 +43,7 @@ class HomeState extends Equatable {
     double? scanProgress,
     String? error,
     Map<String, BookFetchStatus>? fetchingMetadata,
+    int? metadataFetchTotalCount,
   }) {
     return HomeState(
       scanPaths: scanPaths ?? this.scanPaths,
@@ -51,6 +54,7 @@ class HomeState extends Equatable {
       scanProgress: scanProgress ?? this.scanProgress,
       error: error ?? this.error,
       fetchingMetadata: fetchingMetadata ?? this.fetchingMetadata,
+      metadataFetchTotalCount: metadataFetchTotalCount ?? this.metadataFetchTotalCount,
     );
   }
 
@@ -64,6 +68,7 @@ class HomeState extends Equatable {
       scanProgress: scanProgress,
       error: null,
       fetchingMetadata: fetchingMetadata,
+      metadataFetchTotalCount: metadataFetchTotalCount,
     );
   }
 
@@ -77,5 +82,6 @@ class HomeState extends Equatable {
         scanProgress,
         error,
         fetchingMetadata,
+        metadataFetchTotalCount,
       ];
 }
