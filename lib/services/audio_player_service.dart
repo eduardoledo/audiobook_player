@@ -22,8 +22,8 @@ class AudioPlayerService {
 
   AudioPlayerService() {
     _initPlayer();
-    // Automatically save progress every 5 seconds while playing
-    _progressTimer = Timer.periodic(const Duration(seconds: 5), (_) => _saveProgress());
+    // Guarda el progreso cada minuto de forma segura
+    _progressTimer = Timer.periodic(const Duration(minutes: 1), (_) => _saveProgress());
     _initAudioSession();
   }
 
@@ -47,6 +47,20 @@ class AudioPlayerService {
       _loudnessEnhancer = null;
       _player = AudioPlayer();
     }
+    
+    // Guardar progreso al pausar
+    _player.playerStateStream.listen((state) {
+      if (!state.playing) {
+        _saveProgress();
+      }
+    });
+
+    // Guardar progreso al cambiar de capítulo
+    _player.currentIndexStream.listen((index) {
+      if (index != null) {
+        _saveProgress();
+      }
+    });
   }
 
   Future<void> _initAudioSession() async {
@@ -83,11 +97,21 @@ class AudioPlayerService {
     });
   }
 
-  void _saveProgress() {
-    if (currentAudiobook != null && _player.playing) {
+  bool _isSavingProgress = false;
+
+  Future<void> _saveProgress() async {
+    if (currentAudiobook == null) return;
+    if (_isSavingProgress) return;
+    
+    try {
+      _isSavingProgress = true;
       final chapterIndex = _player.currentIndex ?? 0;
       final positionMs = _player.position.inMilliseconds;
-      getIt<LibraryStorage>().savePlaybackProgress(currentAudiobook!.path, chapterIndex, positionMs);
+      await getIt<LibraryStorage>().savePlaybackProgress(currentAudiobook!.path, chapterIndex, positionMs);
+    } catch (e) {
+      debugPrint('Error saving progress: $e');
+    } finally {
+      _isSavingProgress = false;
     }
   }
 

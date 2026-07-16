@@ -502,9 +502,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final state = snapshot.data ?? PlayerState(false, ProcessingState.idle);
         final isPlaying = state.playing;
 
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+            IconButton(
+              icon: const Icon(Icons.skip_previous, size: 28),
+              color: Colors.white70,
+              onPressed: () {
+                final currentIndex = _playerService.getCurrentChapterIndex(widget.audiobook) ?? 0;
+                if (currentIndex > 0) {
+                  _playerService.seekToChapter(widget.audiobook, currentIndex - 1);
+                } else {
+                  _playerService.seekToPosition(Duration.zero);
+                }
+              },
+              tooltip: 'Previous chapter',
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.fast_rewind, size: 28),
+              color: Colors.white70,
+              onPressed: () {
+                final pos = _playerService.position;
+                _playerService.seekToPosition(
+                  Duration(seconds: (pos.inSeconds - 60).clamp(0, pos.inSeconds)),
+                );
+              },
+              tooltip: 'Rewind 1 min',
+            ),
+            const SizedBox(width: 8),
             IconButton(
               icon: const Icon(Icons.replay_10, size: 36),
               color: Colors.white70,
@@ -514,8 +544,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   Duration(seconds: (pos.inSeconds - 10).clamp(0, pos.inSeconds)),
                 );
               },
+              tooltip: 'Rewind 10 sec',
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 8),
             IconButton(
               iconSize: 64,
               icon: Icon(
@@ -531,7 +562,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 }
               },
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 8),
             IconButton(
               icon: const Icon(Icons.forward_10, size: 36),
               color: Colors.white70,
@@ -544,8 +575,38 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 );
               },
+              tooltip: 'Forward 10 sec',
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.fast_forward, size: 28),
+              color: Colors.white70,
+              onPressed: () {
+                final pos = _playerService.position;
+                final dur = _playerService.duration ?? Duration.zero;
+                _playerService.seekToPosition(
+                  Duration(
+                    seconds: (pos.inSeconds + 60).clamp(0, dur.inSeconds),
+                  ),
+                );
+              },
+              tooltip: 'Forward 1 min',
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.skip_next, size: 28),
+              color: Colors.white70,
+              onPressed: () {
+                final currentIndex = _playerService.getCurrentChapterIndex(widget.audiobook) ?? 0;
+                if (currentIndex < widget.audiobook.chapters.length - 1) {
+                  _playerService.seekToChapter(widget.audiobook, currentIndex + 1);
+                }
+              },
+              tooltip: 'Next chapter',
             ),
           ],
+        ),
+          ),
         );
       },
     );
