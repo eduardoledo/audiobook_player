@@ -269,34 +269,64 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           fontSize: 16,
                         ),
                       ),
-                      if (currentBook.narrator != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'Narrated by: ${currentBook.narrator}',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                      if (currentBook.description != null && currentBook.description!.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF252525),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            currentBook.description!,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.6),
-                              fontSize: 12,
-                              height: 1.4,
+                      const SizedBox(height: 8),
+                      Theme(
+                        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                        child: ExpansionTile(
+                          collapsedIconColor: Colors.white54,
+                          iconColor: const Color(0xFFE8B86D),
+                          tilePadding: EdgeInsets.zero,
+                          title: Center(
+                            child: Text(
+                              'Metadata',
+                              style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
                             ),
                           ),
+                          children: [
+                            if (currentBook.narrator != null) ...[
+                              Text(
+                                'Narrated by: ${currentBook.narrator}',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                  fontSize: 16,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                            if (currentBook.publishYear != null) ...[
+                              Text(
+                                'Published: ${currentBook.publishYear}',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                  fontSize: 16,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                            if (currentBook.description != null && currentBook.description!.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF252525),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  currentBook.description!,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                    fontSize: 16,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                      ],
+                      ),
                       const SizedBox(height: 32),
                       _buildProgress(currentBook),
                       const SizedBox(height: 24),
@@ -339,6 +369,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _buildProgress(Audiobook audiobook) {
+    final totalBookSeconds = audiobook.chapters.fold<double>(0.0, (sum, c) => sum + c.duration);
+
     return StreamBuilder<Duration>(
       stream: _playerService.positionStream,
       builder: (context, snapshot) {
@@ -357,7 +389,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
             for (int i = 0; i < currentIndex && i < audiobook.chapters.length; i++) {
                previousChaptersSeconds += audiobook.chapters[i].duration;
             }
-            final totalBookSeconds = audiobook.chapters.fold<double>(0.0, (sum, c) => sum + c.duration);
             
             final bookPosMs = (previousChaptersSeconds * 1000).round() + chapterPosMs;
             final bookTotalMs = (totalBookSeconds * 1000).round();
@@ -594,24 +625,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _buildChaptersTab(Audiobook audiobook) {
-    return StreamBuilder<Duration>(
-      stream: _playerService.positionStream,
-      builder: (context, snapshot) {
-        final currentIndex = _playerService.getCurrentChapterIndex(audiobook) ?? 0;
-
-        // Group chapters by part
-        final List<_ChapterListItem> items = [];
-        String? currentPart;
-        for (int i = 0; i < audiobook.chapters.length; i++) {
-          final c = audiobook.chapters[i];
-          if (c.part != currentPart) {
-            currentPart = c.part;
-            if (currentPart != null) {
-              items.add(_ChapterListItem(partHeader: currentPart));
-            }
-          }
-          items.add(_ChapterListItem(chapter: c, chapterIndex: i));
+    // Group chapters by part
+    final List<_ChapterListItem> items = [];
+    String? currentPart;
+    for (int i = 0; i < audiobook.chapters.length; i++) {
+      final c = audiobook.chapters[i];
+      if (c.part != currentPart) {
+        currentPart = c.part;
+        if (currentPart != null) {
+          items.add(_ChapterListItem(partHeader: currentPart));
         }
+      }
+      items.add(_ChapterListItem(chapter: c, chapterIndex: i));
+    }
+
+    return StreamBuilder<int?>(
+      stream: _playerService.currentIndexStream,
+      builder: (context, snapshot) {
+        final currentIndex = snapshot.data ?? (_playerService.getCurrentChapterIndex(audiobook) ?? 0);
 
         return ListView.builder(
           padding: const EdgeInsets.symmetric(vertical: 8),

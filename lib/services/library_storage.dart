@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
@@ -9,6 +10,71 @@ import '../models/playlist.dart';
 /// Persists scan paths and audiobook library using SQLite.
 class LibraryStorage {
   Database? _db;
+
+  final Map<String, Database> _localDbs = {};
+
+  Future<Database> _getLocalDatabase(String scanPath) async {
+    if (_localDbs.containsKey(scanPath)) {
+      return _localDbs[scanPath]!;
+    }
+    
+    final metadataDir = Directory(p.join(scanPath, '_metadata'));
+    if (!await metadataDir.exists()) {
+      await metadataDir.create(recursive: true);
+    }
+    
+    final dbPath = p.join(metadataDir.path, 'audiobook_library.db');
+    final db = await openDatabase(
+      dbPath,
+      version: 1,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE audiobooks (
+            path TEXT PRIMARY KEY,
+            json_data TEXT
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE playback_progress (
+            path TEXT PRIMARY KEY,
+            chapter_index INTEGER,
+            position_ms INTEGER
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE bookmarks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_path TEXT,
+            position_ms INTEGER,
+            label TEXT
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE book_audio_settings (
+            path TEXT PRIMARY KEY,
+            eq_preset TEXT,
+            loudness_enabled INTEGER,
+            loudness_gain REAL,
+            skip_silences INTEGER,
+            pitch_stabilized INTEGER
+          )
+        ''');
+      },
+    );
+    
+    _localDbs[scanPath] = db;
+    return db;
+  }
+
+  Future<String?> _getScanPathForBook(String bookPath) async {
+    final paths = await getScanPaths();
+    for (final scanPath in paths) {
+      if (bookPath == scanPath || bookPath.startsWith('$scanPath${Platform.pathSeparator}')) {
+        return scanPath;
+      }
+    }
+    return null;
+  }
 
   Future<Database> get database async {
     if (_db != null) return _db!;
@@ -169,42 +235,63 @@ class LibraryStorage {
   }
 
   Future<List<Audiobook>> getAudiobooks() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('audiobooks');
+    final paths = await getScanPaths();
     final List<Audiobook> books = [];
     
-    for (var row in maps) {
+    for (final scanPath in paths) {
       try {
-        final path = row['path'] as String;
-        final jsonStr = row['json_data'] as String;
-        final map = jsonDecode(jsonStr) as Map<String, dynamic>;
-        books.add(Audiobook.fromJson(map, path));
-      } catch (_) {
-        // Skip corrupted entries
+        final db = await _getLocalDatabase(scanPath);
+        final List<Map<String, dynamic>> maps = await db.query('audiobooks');
+        
+        for (var row in maps) {
+          try {
+            final path = row['path'] as String;
+            final jsonStr = row['json_data'] as String;
+            final map = jsonDecode(jsonStr) as Map<String, dynamic>;
+            books.add(Audiobook.fromJson(map, path));
+          } catch (_) {}
+        }
+      } catch (e) {
+        // Database might not exist yet or is corrupted
       }
     }
     return books;
   }
 
   Future<void> saveAudiobooks(List<Audiobook> audiobooks) async {
-    final db = await database;
-    await db.transaction((txn) async {
-      await txn.delete('audiobooks');
-      for (final a in audiobooks) {
-        await txn.insert(
-          'audiobooks', 
-          {
-            'path': a.path,
-            'json_data': jsonEncode(a.toJson()),
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+    // Group books by scan path
+    final Map<String, List<Audiobook>> grouped = {};
+    for (final a in audiobooks) {
+      final scanPath = await _getScanPathForBook(a.path);
+      if (scanPath != null) {
+        grouped.putIfAbsent(scanPath, () => []).add(a);
       }
-    });
+    }
+    
+    for (final scanPath in grouped.keys) {
+      try {
+        final db = await _getLocalDatabase(scanPath);
+        await db.transaction((txn) async {
+          await txn.delete('audiobooks');
+          for (final a in grouped[scanPath]!) {
+            await txn.insert(
+              'audiobooks', 
+              {
+                'path': a.path,
+                'json_data': jsonEncode(a.toJson()),
+              },
+              conflictAlgorithm: ConflictAlgorithm.replace,
+            );
+          }
+        });
+      } catch (_) {}
+    }
   }
 
   Future<void> savePlaybackProgress(String bookPath, int chapterIndex, int positionMs) async {
-    final db = await database;
+    final scanPath = await _getScanPathForBook(bookPath);
+    if (scanPath == null) return;
+    final db = await _getLocalDatabase(scanPath);
     await db.insert(
       'playback_progress',
       {
@@ -217,7 +304,9 @@ class LibraryStorage {
   }
 
   Future<Map<String, int>?> getPlaybackProgress(String bookPath) async {
-    final db = await database;
+    final scanPath = await _getScanPathForBook(bookPath);
+    if (scanPath == null) return null;
+    final db = await _getLocalDatabase(scanPath);
     final maps = await db.query('playback_progress', where: 'path = ?', whereArgs: [bookPath]);
     if (maps.isNotEmpty) {
       return {
@@ -302,7 +391,9 @@ class LibraryStorage {
   // --- Bookmarks ---
   
   Future<List<Bookmark>> getBookmarks(String bookPath) async {
-    final db = await database;
+    final scanPath = await _getScanPathForBook(bookPath);
+    if (scanPath == null) return [];
+    final db = await _getLocalDatabase(scanPath);
     final maps = await db.query('bookmarks', where: 'book_path = ?', whereArgs: [bookPath], orderBy: 'position_ms ASC');
     return maps.map((e) => Bookmark(
       id: e['id'] as int,
@@ -313,7 +404,9 @@ class LibraryStorage {
   }
 
   Future<void> addBookmark(String bookPath, int positionMs, String? label) async {
-    final db = await database;
+    final scanPath = await _getScanPathForBook(bookPath);
+    if (scanPath == null) return;
+    final db = await _getLocalDatabase(scanPath);
     await db.insert('bookmarks', {
       'book_path': bookPath,
       'position_ms': positionMs,
@@ -322,8 +415,15 @@ class LibraryStorage {
   }
 
   Future<void> removeBookmark(int id) async {
-    final db = await database;
-    await db.delete('bookmarks', where: 'id = ?', whereArgs: [id]);
+    // Note: since we don't know the book path from just the id, we must search across all dbs.
+    final paths = await getScanPaths();
+    for (final scanPath in paths) {
+      try {
+        final db = await _getLocalDatabase(scanPath);
+        final count = await db.delete('bookmarks', where: 'id = ?', whereArgs: [id]);
+        if (count > 0) return;
+      } catch (_) {}
+    }
   }
 
   // --- Playlists ---
@@ -373,7 +473,9 @@ class LibraryStorage {
   // --- Book Audio Settings ---
 
   Future<Map<String, dynamic>?> getBookAudioSettings(String bookPath) async {
-    final db = await database;
+    final scanPath = await _getScanPathForBook(bookPath);
+    if (scanPath == null) return null;
+    final db = await _getLocalDatabase(scanPath);
     final List<Map<String, dynamic>> maps = await db.query(
       'book_audio_settings',
       where: 'path = ?',
@@ -393,7 +495,9 @@ class LibraryStorage {
     required bool skipSilences,
     required bool pitchStabilized,
   }) async {
-    final db = await database;
+    final scanPath = await _getScanPathForBook(bookPath);
+    if (scanPath == null) return;
+    final db = await _getLocalDatabase(scanPath);
     await db.insert(
       'book_audio_settings',
       {

@@ -6,8 +6,10 @@ import 'services/audio_player_service.dart';
 
 final getIt = GetIt.instance;
 
-void setupServiceLocator() {
-  getIt.registerLazySingleton<LibraryStorage>(() => LibraryStorage());
+Future<void> setupServiceLocator() async {
+  final storage = LibraryStorage();
+  getIt.registerSingleton<LibraryStorage>(storage);
+
   getIt.registerLazySingleton<AudiobookScanner>(() => AudiobookScanner());
-  getIt.registerLazySingleton<AudioPlayerService>(() => AudioPlayerService());
+  getIt.registerSingleton<AudioPlayerService>(AudioPlayerService());
 }

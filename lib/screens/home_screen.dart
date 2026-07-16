@@ -498,9 +498,19 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
           borderRadius: BorderRadius.circular(8),
         ),
         clipBehavior: Clip.hardEdge,
-        child: book.coverPath != null
-            ? Image.file(File(book.coverPath!), fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.audiotrack, color: Color(0xFFE8B86D), size: 28))
-            : const Icon(Icons.audiotrack, color: Color(0xFFE8B86D), size: 28),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            book.coverPath != null
+                ? Image.file(File(book.coverPath!), fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.audiotrack, color: Color(0xFFE8B86D), size: 28))
+                : const Icon(Icons.audiotrack, color: Color(0xFFE8B86D), size: 28),
+            if (book.isRead)
+              Container(
+                color: Colors.black.withValues(alpha: 0.5),
+                child: const Icon(Icons.check_circle, color: Color(0xFFE8B86D), size: 24),
+              ),
+          ],
+        ),
       ),
       title: Text(
         '$prefix${book.title}',
@@ -560,11 +570,23 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
             onSelected: (value) {
               if (value == 'refresh') {
                 context.read<HomeCubit>().forceFetchMetadata(book);
+              } else if (value == 'toggle_read') {
+                context.read<HomeCubit>().toggleReadStatus(book);
               } else if (value == 'add_playlist') {
                 _showAddToPlaylistDialog(context, state, book);
               }
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(
+                value: 'toggle_read',
+                child: Row(
+                  children: [
+                    Icon(book.isRead ? Icons.remove_done : Icons.done_all, color: Colors.white70, size: 20),
+                    const SizedBox(width: 12),
+                    Text(book.isRead ? 'Mark as Unread' : 'Mark as Read', style: const TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
               const PopupMenuItem<String>(
                 value: 'add_playlist',
                 child: Row(

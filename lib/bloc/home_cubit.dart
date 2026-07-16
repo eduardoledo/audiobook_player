@@ -235,6 +235,17 @@ class HomeCubit extends Cubit<HomeState> {
     }
   }
 
+  Future<void> toggleReadStatus(Audiobook book) async {
+    final currentBooks = List<Audiobook>.from(state.audiobooks);
+    final index = currentBooks.indexWhere((b) => b.path == book.path);
+    if (index != -1) {
+      final updatedBook = book.copyWith(isRead: !book.isRead);
+      currentBooks[index] = updatedBook;
+      emit(state.copyWith(audiobooks: currentBooks));
+      await _storage.saveAudiobooks(currentBooks);
+    }
+  }
+
   void cancelScan() {
     _scanSubscription?.cancel();
     _scanSubscription = null;

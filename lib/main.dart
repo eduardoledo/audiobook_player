@@ -25,7 +25,7 @@ Future<void> main() async {
   if (Platform.isLinux) {
     FilePickerLinux.registerWith();
   }
-  setupServiceLocator();
+  await setupServiceLocator();
   runApp(const AudiobookPlayerApp());
 }
 
