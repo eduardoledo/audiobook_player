@@ -531,7 +531,6 @@ class AudiobookScanner {
     
     // Check path for known authors and sagas
     final relativePath = p.relative(dirPath, from: baseDirectoryPath);
-    final segments = p.split(relativePath).map((s) => s.trim().toLowerCase()).toList();
     final lowerCaseRelativePath = relativePath.toLowerCase();
     
     for (final knownAuthor in knownAuthors) {
@@ -713,7 +712,6 @@ class AudiobookScanner {
     
     // Check path for known authors and sagas
     final relativePath = p.relative(file.path, from: baseDirectoryPath);
-    final segments = p.split(relativePath).map((s) => s.trim().toLowerCase()).toList();
     final lowerCaseRelativePath = relativePath.toLowerCase();
     
     for (final knownAuthor in knownAuthors) {

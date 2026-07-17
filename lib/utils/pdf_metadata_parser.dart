@@ -18,22 +18,20 @@ class PdfMetadataParser {
       
       final info = document.documentInformation;
       
-      if (info.title != null && info.title!.isNotEmpty) {
+      if (info.title.isNotEmpty) {
         result['title'] = info.title;
       }
-      if (info.author != null && info.author!.isNotEmpty) {
+      if (info.author.isNotEmpty) {
         result['author'] = info.author;
       }
-      if (info.subject != null && info.subject!.isNotEmpty) {
+      if (info.subject.isNotEmpty) {
         result['description'] = info.subject;
       }
-      if (info.creationDate != null) {
-        result['publishYear'] = info.creationDate!.year.toString();
-      }
+      result['publishYear'] = info.creationDate.year.toString();
 
       document.dispose();
     } catch (e) {
-      print('Error parsing PDF metadata: $e');
+      // Error parsing PDF metadata
     }
 
     return result;

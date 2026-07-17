@@ -93,7 +93,7 @@ class EpubMetadataParser {
         }
       }
     } catch (e) {
-      print('Error parsing EPUB metadata: $e');
+      // Error parsing EPUB metadata
     }
 
     return result;

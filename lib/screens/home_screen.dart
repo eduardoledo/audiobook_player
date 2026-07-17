@@ -737,16 +737,22 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                         return numA.compareTo(numB);
                       }
                       return _naturalCompare(a.seriesSequence!, b.seriesSequence!);
-                    } else if (a.seriesSequence != null) return -1;
-                    else if (b.seriesSequence != null) return 1;
+                    } else if (a.seriesSequence != null) {
+                      return -1;
+                    } else if (b.seriesSequence != null) {
+                      return 1;
+                    }
 
                     if (a.publishYear != null && b.publishYear != null) {
                       final numA = int.tryParse(a.publishYear!);
                       final numB = int.tryParse(b.publishYear!);
                       if (numA != null && numB != null) return numA.compareTo(numB);
                       return a.publishYear!.compareTo(b.publishYear!);
-                    } else if (a.publishYear != null) return -1;
-                    else if (b.publishYear != null) return 1;
+                    } else if (a.publishYear != null) {
+                      return -1;
+                    } else if (b.publishYear != null) {
+                      return 1;
+                    }
 
                     return _naturalCompare(a.title, b.title);
                   });

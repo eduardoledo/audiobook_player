@@ -125,7 +125,7 @@ class EbookMetadataFetcher {
 
             final imageLinks = volumeInfo['imageLinks'];
             if (imageLinks != null) {
-              coverUrl = imageLinks['thumbnail']?.toString()?.replaceAll('http:', 'https:');
+              coverUrl = imageLinks['thumbnail']?.toString().replaceAll('http:', 'https:');
             }
           }
         }
@@ -150,7 +150,7 @@ class EbookMetadataFetcher {
               finalCoverPath = newCoverPath;
             }
           } catch (e) {
-            print('Failed to download ebook cover: $e');
+            // Error downloading cover
           }
         }
 
