@@ -8,6 +8,9 @@ import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../models/audiobook.dart';
+import '../models/ebook.dart';
+import '../utils/epub_metadata_parser.dart';
+import '../utils/pdf_metadata_parser.dart';
 import '../models/scan_message.dart';
 import '../service_locator.dart';
 import 'library_storage.dart';
@@ -50,6 +53,7 @@ class AudioFileMetadata {
 /// Scans directories for audiobooks (m4b files with optional chapters.json).
 class AudiobookScanner {
   static const List<String> _audioExtensions = ['.m4b', '.m4a', '.mp3'];
+  static const List<String> _ebookExtensions = ['.epub', '.pdf'];
 
   /// Parses dirPath relative to baseDirectoryPath.
   /// Returns author, saga (optional), bookTitle or null if pattern doesn't match.
@@ -256,6 +260,8 @@ class AudiobookScanner {
           final storage = getIt<LibraryStorage>();
           final globalPatterns = await storage.getGlobalPatterns();
           final sagaCodes = await storage.getSagaCodes();
+          final knownAuthors = await storage.getAuthors();
+          final knownSagas = await storage.getSagas();
 
           isolate = await Isolate.spawn(_isolateScan, {
             'path': directoryPath,
@@ -264,6 +270,8 @@ class AudiobookScanner {
             'seriesRules': seriesRules,
             'globalPatterns': globalPatterns,
             'sagaCodes': sagaCodes,
+            'knownAuthors': knownAuthors,
+            'knownSagas': knownSagas,
           });
 
           receivePort.listen((message) {
@@ -293,6 +301,8 @@ class AudiobookScanner {
     final Map<String, List<String>>? seriesRules = args['seriesRules'];
     final List<String> globalPatterns = args['globalPatterns'] ?? [];
     final Map<String, String> sagaCodes = args['sagaCodes'] ?? {};
+    final Set<String> knownAuthors = args['knownAuthors'] ?? {};
+    final Set<String> knownSagas = args['knownSagas'] ?? {};
 
     // Get top-level directories for progress calculation
     List<Directory> topLevelDirs = [];
@@ -359,8 +369,12 @@ class AudiobookScanner {
               seriesRules: seriesRules,
               globalPatterns: globalPatterns,
               sagaCodes: sagaCodes,
+              knownAuthors: knownAuthors,
+              knownSagas: knownSagas,
             );
             if (audiobook != null) {
+              if (audiobook.author != 'Unknown') knownAuthors.add(audiobook.author);
+              if (audiobook.series != null) knownSagas.add(audiobook.series!);
               sendPort.send(ScanMessage(audiobook: audiobook, progress: processedTopDirs / totalTopDirs));
             }
           }
@@ -376,6 +390,30 @@ class AudiobookScanner {
         return;
       }
 
+      var isEbookDirectory = entities.any((entity) =>
+          entity is File && _ebookExtensions.contains(p.extension(entity.path).toLowerCase()));
+
+      if (isEbookDirectory) {
+        final ebookFiles = entities.whereType<File>().where((f) => _ebookExtensions.contains(p.extension(f.path).toLowerCase())).toList();
+        for (var file in ebookFiles) {
+          final ebook = await _loadEbook(
+            file: file,
+            dirPath: currentPath,
+            baseDirectoryPath: basePath,
+            seriesRules: seriesRules,
+            globalPatterns: globalPatterns,
+            sagaCodes: sagaCodes,
+            knownAuthors: knownAuthors,
+            knownSagas: knownSagas,
+          );
+          if (ebook != null) {
+            if (ebook.author != 'Unknown') knownAuthors.add(ebook.author);
+            if (ebook.series != null) knownSagas.add(ebook.series!);
+            sendPort.send(ScanMessage(ebook: ebook, progress: processedTopDirs / totalTopDirs));
+          }
+        }
+      }
+
       var isAudioDirectory = entities.any((entity) =>
           entity is File && _audioExtensions.contains(p.extension(entity.path).toLowerCase()));
       
@@ -388,8 +426,12 @@ class AudiobookScanner {
           seriesRules: seriesRules,
           globalPatterns: globalPatterns,
           sagaCodes: sagaCodes,
+          knownAuthors: knownAuthors,
+          knownSagas: knownSagas,
         );
         if (audiobook != null) {
+          if (audiobook.author != 'Unknown') knownAuthors.add(audiobook.author);
+          if (audiobook.series != null) knownSagas.add(audiobook.series!);
           sendPort.send(ScanMessage(audiobook: audiobook, progress: processedTopDirs / totalTopDirs));
         }
       }
@@ -417,9 +459,36 @@ class AudiobookScanner {
           seriesRules: seriesRules,
           globalPatterns: globalPatterns,
           sagaCodes: sagaCodes,
+          knownAuthors: knownAuthors,
+          knownSagas: knownSagas,
         );
         if (audiobook != null) {
+          if (audiobook.author != 'Unknown') knownAuthors.add(audiobook.author);
+          if (audiobook.series != null) knownSagas.add(audiobook.series!);
           sendPort.send(ScanMessage(audiobook: audiobook, progress: 0.0));
+        }
+      }
+
+      var isEbookDirectory = rootEntities.any((entity) =>
+          entity is File && _ebookExtensions.contains(p.extension(entity.path).toLowerCase()));
+      if (isEbookDirectory) {
+        final ebookFiles = rootEntities.whereType<File>().where((f) => _ebookExtensions.contains(p.extension(f.path).toLowerCase())).toList();
+        for (var file in ebookFiles) {
+          final ebook = await _loadEbook(
+            file: file,
+            dirPath: directoryPath,
+            baseDirectoryPath: directoryPath,
+            seriesRules: seriesRules,
+            globalPatterns: globalPatterns,
+            sagaCodes: sagaCodes,
+            knownAuthors: knownAuthors,
+            knownSagas: knownSagas,
+          );
+          if (ebook != null) {
+            if (ebook.author != 'Unknown') knownAuthors.add(ebook.author);
+            if (ebook.series != null) knownSagas.add(ebook.series!);
+            sendPort.send(ScanMessage(ebook: ebook, progress: 0.0));
+          }
         }
       }
     } catch (_) {}
@@ -447,6 +516,8 @@ class AudiobookScanner {
     Map<String, List<String>>? seriesRules,
     required List<String> globalPatterns,
     required Map<String, String> sagaCodes,
+    required Set<String> knownAuthors,
+    required Set<String> knownSagas,
   }) async {
     if (audioFiles.isEmpty) return null;
 
@@ -458,6 +529,24 @@ class AudiobookScanner {
     String? seriesSequence;
     String? narrator;
     
+    // Check path for known authors and sagas
+    final relativePath = p.relative(dirPath, from: baseDirectoryPath);
+    final segments = p.split(relativePath).map((s) => s.trim().toLowerCase()).toList();
+    final lowerCaseRelativePath = relativePath.toLowerCase();
+    
+    for (final knownAuthor in knownAuthors) {
+      if (lowerCaseRelativePath.contains(knownAuthor.toLowerCase())) {
+        author = knownAuthor;
+        break;
+      }
+    }
+    for (final knownSaga in knownSagas) {
+      if (lowerCaseRelativePath.contains(knownSaga.toLowerCase())) {
+        saga = knownSaga;
+        break;
+      }
+    }
+
     bool found = false;
 
     if (seriesRules != null && seriesRules.isNotEmpty) {
@@ -600,6 +689,171 @@ class AudiobookScanner {
           part: partName,
         );
       }),
+    );
+  }
+
+  static Future<Ebook?> _loadEbook({
+    required File file,
+    required String dirPath,
+    required String baseDirectoryPath, 
+    Map<String, List<String>>? seriesRules,
+    required List<String> globalPatterns,
+    required Map<String, String> sagaCodes,
+    required Set<String> knownAuthors,
+    required Set<String> knownSagas,
+  }) async {
+    final dirPathMetadata = parseDirPath(dirPath, baseDirectoryPath);
+    String title = p.basenameWithoutExtension(file.path);
+    String author = dirPathMetadata?.author ?? 'Unknown';
+    String? saga = dirPathMetadata?.saga;
+    String? publishYear;
+    String? seriesSequence;
+    String? description;
+    String? coverPath;
+    
+    // Check path for known authors and sagas
+    final relativePath = p.relative(file.path, from: baseDirectoryPath);
+    final segments = p.split(relativePath).map((s) => s.trim().toLowerCase()).toList();
+    final lowerCaseRelativePath = relativePath.toLowerCase();
+    
+    for (final knownAuthor in knownAuthors) {
+      if (lowerCaseRelativePath.contains(knownAuthor.toLowerCase())) {
+        author = knownAuthor;
+        break;
+      }
+    }
+    for (final knownSaga in knownSagas) {
+      if (lowerCaseRelativePath.contains(knownSaga.toLowerCase())) {
+        saga = knownSaga;
+        break;
+      }
+    }
+    
+    // First, try extracting embedded metadata based on file extension
+    Map<String, String?>? embeddedMeta;
+    if (file.path.toLowerCase().endsWith('.epub')) {
+      embeddedMeta = await EpubMetadataParser.parse(file);
+    } else if (file.path.toLowerCase().endsWith('.pdf')) {
+      embeddedMeta = await PdfMetadataParser.parse(file);
+    }
+    
+    bool found = false;
+
+    if (seriesRules != null && seriesRules.isNotEmpty) {
+      for (final entry in seriesRules.entries) {
+        final seriesName = entry.key;
+        for (final patternStr in entry.value) {
+          try {
+            final regExp = RegExp(patternStr, caseSensitive: false);
+            final match = regExp.firstMatch(title);
+            if (match != null) {
+              saga = seriesName;
+              
+              if (match.groupNames.contains('year')) {
+                final yearStr = match.namedGroup('year');
+                if (yearStr != null && yearStr.isNotEmpty) {
+                  publishYear = yearStr.trim();
+                }
+              }
+              
+              if (match.groupNames.contains('title')) {
+                final extractedTitle = match.namedGroup('title');
+                if (extractedTitle != null && extractedTitle.isNotEmpty) {
+                  title = extractedTitle.trim();
+                }
+              }
+              
+              if (match.groupNames.contains('author')) {
+                final extractedAuthor = match.namedGroup('author');
+                if (extractedAuthor != null && extractedAuthor.isNotEmpty) {
+                  author = extractedAuthor.trim();
+                }
+              }
+
+              if (match.groupNames.contains('seriesSequence')) {
+                final seq = match.namedGroup('seriesSequence');
+                if (seq != null && seq.isNotEmpty) {
+                  seriesSequence = seq.trim();
+                }
+              }
+              
+              found = true;
+              break;
+            }
+          } catch (_) {
+            // Invalid regex, ignore
+          }
+        }
+        if (found) break;
+      }
+    }
+
+    if (!found && globalPatterns.isNotEmpty) {
+      final relativePath = p.relative(file.path, from: baseDirectoryPath).replaceAll(r'\', '/');
+      for (final patternStr in globalPatterns) {
+        try {
+          final regExp = RegExp(patternStr, caseSensitive: false);
+          final match = regExp.firstMatch(relativePath) ?? regExp.firstMatch(title);
+          if (match != null) {
+            if (match.groupNames.contains('seriesCode')) {
+              final code = match.namedGroup('seriesCode');
+              if (code != null && code.isNotEmpty) {
+                saga = sagaCodes[code] ?? code;
+              }
+            } else if (match.groupNames.contains('series')) {
+               final extractedSeries = match.namedGroup('series');
+               if (extractedSeries != null && extractedSeries.isNotEmpty) {
+                  saga = extractedSeries.trim();
+               }
+            }
+
+            if (match.groupNames.contains('seriesSequence')) {
+               final seq = match.namedGroup('seriesSequence');
+               if (seq != null && seq.isNotEmpty) {
+                  seriesSequence = seq.trim();
+               }
+            }
+
+            if (match.groupNames.contains('year')) {
+               final yearStr = match.namedGroup('year');
+               if (yearStr != null && yearStr.isNotEmpty) publishYear = yearStr.trim();
+            }
+            if (match.groupNames.contains('title')) {
+               final extractedTitle = match.namedGroup('title');
+               if (extractedTitle != null && extractedTitle.isNotEmpty) title = extractedTitle.trim();
+            }
+            if (match.groupNames.contains('author')) {
+               final extractedAuthor = match.namedGroup('author');
+               if (extractedAuthor != null && extractedAuthor.isNotEmpty) author = extractedAuthor.trim();
+            }
+            
+            found = true;
+            break;
+          }
+        } catch (_) {}
+      }
+    }
+
+    // Now, apply embedded metadata, overriding path/regex parsing ONLY if they yield valid data
+    if (embeddedMeta != null) {
+      if (embeddedMeta['title'] != null && embeddedMeta['title']!.isNotEmpty) title = embeddedMeta['title']!;
+      if (embeddedMeta['author'] != null && embeddedMeta['author']!.isNotEmpty) author = embeddedMeta['author']!;
+      if (embeddedMeta['description'] != null && embeddedMeta['description']!.isNotEmpty) description = embeddedMeta['description']!;
+      if (embeddedMeta['publishYear'] != null && embeddedMeta['publishYear']!.isNotEmpty) publishYear = embeddedMeta['publishYear']!;
+      if (embeddedMeta['series'] != null && embeddedMeta['series']!.isNotEmpty) saga = embeddedMeta['series']!;
+      if (embeddedMeta['coverPath'] != null && embeddedMeta['coverPath']!.isNotEmpty) coverPath = embeddedMeta['coverPath']!;
+    }
+
+    return Ebook(
+      path: dirPath,
+      title: title,
+      author: author,
+      series: saga,
+      seriesSequence: seriesSequence,
+      description: description,
+      publishYear: publishYear,
+      coverPath: coverPath,
+      file: file.path,
     );
   }
 }

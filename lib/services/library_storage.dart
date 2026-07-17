@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../models/audiobook.dart';
+import '../models/ebook.dart';
 import '../models/bookmark.dart';
 import '../models/playlist.dart';
 
@@ -31,6 +32,12 @@ class LibraryStorage {
         await db.execute('''
           CREATE TABLE audiobooks (
             path TEXT PRIMARY KEY,
+            json_data TEXT
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE ebooks (
+            file TEXT PRIMARY KEY,
             json_data TEXT
           )
         ''');
@@ -84,7 +91,7 @@ class LibraryStorage {
     
     _db = await openDatabase(
       path,
-      version: 5,
+      version: 9,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE scan_paths (
@@ -94,6 +101,12 @@ class LibraryStorage {
         await db.execute('''
           CREATE TABLE audiobooks (
             path TEXT PRIMARY KEY,
+            json_data TEXT
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS ebooks (
+            file TEXT PRIMARY KEY,
             json_data TEXT
           )
         ''');
@@ -139,6 +152,16 @@ class LibraryStorage {
             loudness_gain REAL,
             skip_silences INTEGER,
             pitch_stabilized INTEGER
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS authors (
+            name TEXT PRIMARY KEY
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS sagas (
+            name TEXT PRIMARY KEY
           )
         ''');
       },
@@ -195,9 +218,77 @@ class LibraryStorage {
             )
           ''');
         }
+        if (oldVersion < 7) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS ebooks (
+              file TEXT PRIMARY KEY,
+              json_data TEXT
+            )
+          ''');
+        }
+        if (oldVersion < 8) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS authors (
+              name TEXT PRIMARY KEY
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS sagas (
+              name TEXT PRIMARY KEY
+            )
+          ''');
+        }
+        if (oldVersion < 9) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS ebooks (
+              file TEXT PRIMARY KEY,
+              json_data TEXT
+            )
+          ''');
+        }
       },
     );
     return _db!;
+  }
+
+  Future<Set<String>> getAuthors() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('authors');
+    return maps.map((e) => e['name'] as String).toSet();
+  }
+
+  Future<void> saveAuthors(Set<String> authors) async {
+    if (authors.isEmpty) return;
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final author in authors) {
+        await txn.insert(
+          'authors',
+          {'name': author},
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    });
+  }
+
+  Future<Set<String>> getSagas() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('sagas');
+    return maps.map((e) => e['name'] as String).toSet();
+  }
+
+  Future<void> saveSagas(Set<String> sagas) async {
+    if (sagas.isEmpty) return;
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final saga in sagas) {
+        await txn.insert(
+          'sagas',
+          {'name': saga},
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    });
   }
 
   Future<List<String>> getScanPaths() async {
@@ -279,6 +370,62 @@ class LibraryStorage {
               {
                 'path': a.path,
                 'json_data': jsonEncode(a.toJson()),
+              },
+              conflictAlgorithm: ConflictAlgorithm.replace,
+            );
+          }
+        });
+      } catch (_) {}
+    }
+  }
+
+  Future<List<Ebook>> getEbooks() async {
+    final paths = await getScanPaths();
+    final List<Ebook> ebooks = [];
+    
+    for (final scanPath in paths) {
+      try {
+        final db = await _getLocalDatabase(scanPath);
+        final List<Map<String, dynamic>> maps = await db.query('ebooks');
+        
+        for (var row in maps) {
+          try {
+            final file = row['file'] as String;
+            final jsonStr = row['json_data'] as String;
+            final map = jsonDecode(jsonStr) as Map<String, dynamic>;
+            // Extract basePath from the file path
+            final basePath = p.dirname(file); 
+            ebooks.add(Ebook.fromJson(map, basePath));
+          } catch (_) {}
+        }
+      } catch (e) {
+        // Database might not exist yet or is corrupted
+      }
+    }
+    return ebooks;
+  }
+
+  Future<void> saveEbooks(List<Ebook> ebooks) async {
+    // Group books by scan path
+    final Map<String, List<Ebook>> grouped = {};
+    for (final e in ebooks) {
+      final scanPath = await _getScanPathForBook(e.file);
+      if (scanPath != null) {
+        grouped.putIfAbsent(scanPath, () => []).add(e);
+      }
+    }
+    
+    for (final scanPath in grouped.keys) {
+      try {
+        final db = await _getLocalDatabase(scanPath);
+        await db.transaction((txn) async {
+          await txn.delete('ebooks');
+          for (final e in grouped[scanPath]!) {
+            await txn.insert(
+              'ebooks', 
+              {
+                'file': e.file,
+                'json_data': jsonEncode(e.toJson()),
               },
               conflictAlgorithm: ConflictAlgorithm.replace,
             );

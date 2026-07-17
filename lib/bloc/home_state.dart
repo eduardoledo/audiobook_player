@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import '../models/audiobook.dart';
+import '../models/ebook.dart';
 import '../models/playlist.dart';
 
 class BookFetchStatus extends Equatable {
@@ -14,6 +15,7 @@ class BookFetchStatus extends Equatable {
 class HomeState extends Equatable {
   final List<String> scanPaths;
   final List<Audiobook> audiobooks;
+  final List<Ebook> ebooks;
   final List<Playlist> playlists;
   final bool isLoading;
   final bool isScanning;
@@ -25,6 +27,7 @@ class HomeState extends Equatable {
   const HomeState({
     this.scanPaths = const [],
     this.audiobooks = const [],
+    this.ebooks = const [],
     this.playlists = const [],
     this.isLoading = false,
     this.isScanning = false,
@@ -37,6 +40,7 @@ class HomeState extends Equatable {
   HomeState copyWith({
     List<String>? scanPaths,
     List<Audiobook>? audiobooks,
+    List<Ebook>? ebooks,
     List<Playlist>? playlists,
     bool? isLoading,
     bool? isScanning,
@@ -48,6 +52,7 @@ class HomeState extends Equatable {
     return HomeState(
       scanPaths: scanPaths ?? this.scanPaths,
       audiobooks: audiobooks ?? this.audiobooks,
+      ebooks: ebooks ?? this.ebooks,
       playlists: playlists ?? this.playlists,
       isLoading: isLoading ?? this.isLoading,
       isScanning: isScanning ?? this.isScanning,
@@ -62,6 +67,7 @@ class HomeState extends Equatable {
     return HomeState(
       scanPaths: scanPaths,
       audiobooks: audiobooks,
+      ebooks: ebooks,
       playlists: playlists,
       isLoading: isLoading,
       isScanning: isScanning,
@@ -76,6 +82,7 @@ class HomeState extends Equatable {
   List<Object?> get props => [
         scanPaths,
         audiobooks,
+        ebooks,
         playlists,
         isLoading,
         isScanning,

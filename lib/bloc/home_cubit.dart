@@ -8,10 +8,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/audiobook.dart';
+import '../models/ebook.dart';
 import '../service_locator.dart';
 import '../services/audiobook_scanner.dart';
 import '../services/library_storage.dart';
 import '../services/metadata_fetcher.dart';
+import '../services/ebook_metadata_fetcher.dart';
 import 'home_state.dart';
 
 class HomeCubit extends Cubit<HomeState> {
@@ -22,6 +24,7 @@ class HomeCubit extends Cubit<HomeState> {
 
   HomeCubit() : super(const HomeState()) {
     _initFetcher();
+    _initEbookFetcher();
     loadData();
   }
 
@@ -62,9 +65,47 @@ class HomeCubit extends Cubit<HomeState> {
     );
   }
 
+  Future<void> _initEbookFetcher() async {
+    await EbookMetadataFetcher.start(
+      onMetadataFetched: (updatedBook) async {
+        if (isClosed) return;
+        
+        final currentEbooks = List<Ebook>.from(state.ebooks);
+        final index = currentEbooks.indexWhere((b) => b.file == updatedBook.file);
+        if (index != -1) {
+          currentEbooks[index] = updatedBook;
+          
+          final newFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)..remove(updatedBook.file);
+          final newTotal = newFetching.isEmpty ? 0 : state.metadataFetchTotalCount;
+          
+          emit(state.copyWith(
+            ebooks: currentEbooks,
+            fetchingMetadata: newFetching,
+            metadataFetchTotalCount: newTotal,
+          ));
+          // Persist the changes
+          await _storage.saveEbooks(currentEbooks);
+        }
+      },
+      onProgress: (path, status, progress) {
+        if (isClosed) return;
+        final newFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)
+          ..[path] = BookFetchStatus(status: status, progress: progress);
+        emit(state.copyWith(fetchingMetadata: newFetching));
+      },
+      onFetchError: (path, error) {
+        if (isClosed) return;
+        final newFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)..remove(path);
+        final newTotal = newFetching.isEmpty ? 0 : state.metadataFetchTotalCount;
+        emit(state.copyWith(fetchingMetadata: newFetching, error: error, metadataFetchTotalCount: newTotal));
+      },
+    );
+  }
+
   @override
   Future<void> close() {
     MetadataFetcher.stop();
+    EbookMetadataFetcher.stop();
     _scanSubscription?.cancel();
     return super.close();
   }
@@ -86,15 +127,34 @@ class HomeCubit extends Cubit<HomeState> {
     MetadataFetcher.enqueue(booksToFetch);
   }
 
+  void _enqueueEbooks(List<Ebook> ebooks) {
+    final ebooksToFetch = ebooks.where((b) => !b.hasMetadataLocally).toList();
+    if (ebooksToFetch.isEmpty) return;
+    
+    final newFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata);
+    for (final b in ebooksToFetch) {
+      newFetching[b.file] = const BookFetchStatus(status: "Queued...", progress: 0.0);
+    }
+    
+    final newTotal = state.fetchingMetadata.isEmpty 
+        ? ebooksToFetch.length 
+        : state.metadataFetchTotalCount + ebooksToFetch.length;
+
+    emit(state.copyWith(fetchingMetadata: newFetching, metadataFetchTotalCount: newTotal));
+    EbookMetadataFetcher.enqueue(ebooksToFetch);
+  }
+
   Future<void> loadData() async {
     emit(state.copyWith(isLoading: true).clearError());
     try {
       final paths = await _storage.getScanPaths();
       final books = await _storage.getAudiobooks();
+      final ebooks = await _storage.getEbooks();
       final playlists = await _storage.getPlaylists();
       emit(state.copyWith(
         scanPaths: paths,
         audiobooks: books,
+        ebooks: ebooks,
         playlists: playlists,
         isLoading: false,
       ));
@@ -127,6 +187,7 @@ class HomeCubit extends Cubit<HomeState> {
           if (isClosed) return;
 
           List<Audiobook>? newAudiobooks;
+          List<Ebook>? newEbooks;
           if (message.audiobook != null) {
             final currentBooks = List<Audiobook>.from(state.audiobooks);
             final index = currentBooks.indexWhere((b) => b.path == message.audiobook!.path);
@@ -146,14 +207,40 @@ class HomeCubit extends Cubit<HomeState> {
             }
             newAudiobooks = currentBooks;
           }
+          if (message.ebook != null) {
+            final currentEbooks = List<Ebook>.from(state.ebooks);
+            final index = currentEbooks.indexWhere((b) => b.file == message.ebook!.file);
+            if (index != -1) {
+              currentEbooks[index] = message.ebook!;
+            } else {
+              currentEbooks.add(message.ebook!);
+            }
+            newEbooks = currentEbooks;
+          }
 
           emit(state.copyWith(
             audiobooks: newAudiobooks,
+            ebooks: newEbooks,
             scanProgress: message.progress,
           ));
         },
         onDone: () async {
           await _storage.saveAudiobooks(state.audiobooks);
+          await _storage.saveEbooks(state.ebooks);
+          
+          final authors = <String>{};
+          final sagas = <String>{};
+          for (final b in state.audiobooks) {
+            if (b.author != 'Unknown') authors.add(b.author);
+            if (b.series != null) sagas.add(b.series!);
+          }
+          for (final b in state.ebooks) {
+            if (b.author != 'Unknown') authors.add(b.author);
+            if (b.series != null) sagas.add(b.series!);
+          }
+          await _storage.saveAuthors(authors);
+          await _storage.saveSagas(sagas);
+
           // Automatic metadata update on scan completion disabled to prevent unrequested internet fetches
           // _enqueueBooks(state.audiobooks);
           emit(state.copyWith(isScanning: false, scanProgress: null));
@@ -175,6 +262,7 @@ class HomeCubit extends Cubit<HomeState> {
 
     try {
       final allBooks = List<Audiobook>.from(state.audiobooks);
+      final allEbooks = List<Ebook>.from(state.ebooks);
       
       // Simple wrapper to run scans sequentially
       for (int i = 0; i < state.scanPaths.length; i++) {
@@ -203,12 +291,21 @@ class HomeCubit extends Cubit<HomeState> {
                    allBooks.add(message.audiobook!);
                 }
               }
+              if (message.ebook != null) {
+                final index = allEbooks.indexWhere((b) => b.file == message.ebook!.file);
+                if (index != -1) {
+                  allEbooks[index] = message.ebook!;
+                } else {
+                  allEbooks.add(message.ebook!);
+                }
+              }
               
               // Progress reflects the overall paths progress + individual path progress
               final overallProgress = (i + (message.progress ?? 0.0)) / state.scanPaths.length;
               
               emit(state.copyWith(
                 audiobooks: List.from(allBooks),
+                ebooks: List.from(allEbooks),
                 scanProgress: overallProgress,
               ));
             },
@@ -225,6 +322,21 @@ class HomeCubit extends Cubit<HomeState> {
       }
       
       await _storage.saveAudiobooks(state.audiobooks);
+      await _storage.saveEbooks(state.ebooks);
+
+      final authors = <String>{};
+      final sagas = <String>{};
+      for (final b in state.audiobooks) {
+        if (b.author != 'Unknown') authors.add(b.author);
+        if (b.series != null) sagas.add(b.series!);
+      }
+      for (final b in state.ebooks) {
+        if (b.author != 'Unknown') authors.add(b.author);
+        if (b.series != null) sagas.add(b.series!);
+      }
+      await _storage.saveAuthors(authors);
+      await _storage.saveSagas(sagas);
+
       // Automatic metadata update on rescan completion disabled to prevent unrequested internet fetches
       // _enqueueBooks(state.audiobooks);
       emit(state.copyWith(isScanning: false, scanProgress: null));
@@ -301,6 +413,25 @@ class HomeCubit extends Cubit<HomeState> {
       _enqueueBooks([book.copyWith(hasMetadataLocally: false)]);
     } catch (e) {
       final revertedFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)..remove(book.path);
+      final newTotal = revertedFetching.isEmpty ? 0 : state.metadataFetchTotalCount;
+      emit(state.copyWith(fetchingMetadata: revertedFetching, error: 'Failed to force fetch: $e', metadataFetchTotalCount: newTotal));
+    }
+  }
+
+  Future<void> forceFetchEbookMetadata(Ebook book) async {
+    final newFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)
+      ..[book.file] = const BookFetchStatus(status: "Initializing...", progress: 0.0);
+    final newTotal = state.fetchingMetadata.isEmpty ? 1 : state.metadataFetchTotalCount + 1;
+    emit(state.copyWith(fetchingMetadata: newFetching, metadataFetchTotalCount: newTotal));
+
+    try {
+      if (book.coverPath != null) {
+        final coverFile = File(book.coverPath!);
+        if (await coverFile.exists()) await coverFile.delete();
+      }
+      _enqueueEbooks([book.copyWith(hasMetadataLocally: false, coverPath: null)]);
+    } catch (e) {
+      final revertedFetching = Map<String, BookFetchStatus>.from(state.fetchingMetadata)..remove(book.file);
       final newTotal = revertedFetching.isEmpty ? 0 : state.metadataFetchTotalCount;
       emit(state.copyWith(fetchingMetadata: revertedFetching, error: 'Failed to force fetch: $e', metadataFetchTotalCount: newTotal));
     }
