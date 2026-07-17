@@ -11,6 +11,7 @@ import '../service_locator.dart';
 import 'player_screen.dart';
 import 'playlists_tab.dart';
 import 'series_mapping_screen.dart';
+import 'google_drive_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -142,7 +143,17 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                   onPressed: () => _showCreatePlaylistDialog(context),
                   child: const Icon(Icons.add, color: Color(0xFF1A1A1A)),
                 )
-              : null,
+              : FloatingActionButton(
+                  backgroundColor: const Color(0xFFE8B86D),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const GoogleDriveScreen()),
+                    );
+                  },
+                  tooltip: 'Google Drive',
+                  child: const Icon(Icons.cloud, color: Color(0xFF1A1A1A)),
+                ),
         );
       },
     );
