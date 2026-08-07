@@ -464,7 +464,7 @@ class _SeriesMappingScreenState extends State<SeriesMappingScreen> {
                 style: const TextStyle(color: Colors.white),
                 onChanged: (_) => _evaluateSimulator(),
                 decoration: const InputDecoration(
-                  labelText: 'e.g. ^(?<author>[^/]+)/(?<title>.*)',
+                  labelText: 'e.g. ^(?<author>[^/]+)/(?<universe>[^/]+)/(?<series>[^/]+)/(?<title>.*)',
                   labelStyle: TextStyle(color: Colors.white54),
                   enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                   focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFFE8B86D))),

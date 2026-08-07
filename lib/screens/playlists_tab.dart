@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/home_cubit.dart';
 import '../bloc/home_state.dart';
+import 'player_screen.dart';
 
 class PlaylistsTab extends StatelessWidget {
   const PlaylistsTab({super.key});
@@ -74,6 +75,23 @@ class PlaylistsTab extends StatelessWidget {
                                       Navigator.pop(context); // close sheet to refresh
                                     },
                                   ),
+                                  onTap: () {
+                                    final cubit = context.read<HomeCubit>();
+                                    cubit.setActivePlaylist(p.id!);
+                                    Navigator.pop(context); // close bottom sheet
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => BlocProvider.value(
+                                          value: cubit,
+                                          child: PlayerScreen(audiobook: book),
+                                        ),
+                                      ),
+                                    ).then((_) {
+                                      // Clear playlist context when returning to home
+                                      cubit.setActivePlaylist(null);
+                                    });
+                                  },
                                 );
                               },
                             ),

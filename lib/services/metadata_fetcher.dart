@@ -116,11 +116,11 @@ class MetadataFetcher {
           'status': 'Analyzing audio files...',
           'progress': 0.1,
         });
-        final metaFile = File(p.join(book.path, 'metadata.json'));
+        final metaFile = AudiobookScanner.getBookMetadataFile(book.path);
         final coverPath = p.join(book.path, 'cover.jpg');
         final hasCover = await File(coverPath).exists();
 
-        // Check local metadata.json
+        // Check local book.metadata.json / metadata.json
         bool hasDurationLocally = false;
         String? localDurationStr;
         Map<String, dynamic> localJson = {};
@@ -357,32 +357,44 @@ class MetadataFetcher {
           'progress': 0.95,
         });
         if (isEmpty && !hasCover) {
-           await metaFile.writeAsString(jsonEncode({'durationFormatted': durationStr, 'chapters': newChapters.map((c) => c.toJson()).toList()}));
+           await metaFile.writeAsString(jsonEncode({
+             'title': book.title,
+             'author': book.author,
+             'universe': book.universe,
+             'series': book.series,
+             'durationFormatted': durationStr,
+             'chapters': newChapters.map((c) => c.toJson()).toList(),
+           }));
            sendPort.send({
              'type': 'result',
              'audiobook': book.copyWith(hasMetadataLocally: true, durationFormatted: durationStr, chapters: newChapters),
            });
         } else {
-           // Save metadata locally
+           // Save metadata locally into book.metadata.json
            final newJson = {
+             'title': book.title,
+             'author': book.author,
+             'universe': book.universe,
+             'seriesName': book.series ?? bestSeries,
+             'seriesPosition': bestSeriesPos,
              'description': bestDesc,
              'publishYear': bestYear,
              'subjects': bestSubjects,
-             'seriesName': bestSeries,
-             'seriesPosition': bestSeriesPos,
              'durationFormatted': durationStr,
              'chapters': newChapters.map((c) => c.toJson()).toList(),
            };
            await metaFile.writeAsString(jsonEncode(newJson));
 
-           // "Intentar corrección": overwrite book.series with bestSeries if found
-           final updatedSeries = bestSeries ?? book.series;
+           // Preserve path-detected structure (author, universe, series)
+           final updatedSeries = book.series ?? bestSeries;
+           final updatedAuthor = (book.author.isNotEmpty && book.author != 'Unknown') ? book.author : null;
 
            final updated = book.copyWith(
              description: bestDesc,
              publishYear: bestYear,
              subjects: bestSubjects,
              coverPath: localCoverPath,
+             author: updatedAuthor,
              series: updatedSeries,
              title: (bestSeriesPos != null && !RegExp(r'^\d').hasMatch(book.title)) 
                  ? '${bestSeriesPos.padLeft(2, '0')} - ${book.title}'

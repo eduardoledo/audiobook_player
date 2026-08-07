@@ -4,6 +4,7 @@ class Ebook {
   final String path;
   final String title;
   final String author;
+  final String? universe;
   final String? series;
   final String? seriesSequence;
   final String? description;
@@ -17,6 +18,7 @@ class Ebook {
     required this.path,
     required this.title,
     required this.author,
+    this.universe,
     this.series,
     this.seriesSequence,
     this.description,
@@ -31,6 +33,7 @@ class Ebook {
     String? path,
     String? title,
     String? author,
+    String? universe,
     String? series,
     String? seriesSequence,
     String? description,
@@ -44,6 +47,7 @@ class Ebook {
       path: path ?? this.path,
       title: title ?? this.title,
       author: author ?? this.author,
+      universe: universe ?? this.universe,
       series: series ?? this.series,
       seriesSequence: seriesSequence ?? this.seriesSequence,
       description: description ?? this.description,
@@ -56,10 +60,14 @@ class Ebook {
   }
 
   factory Ebook.fromJson(Map<String, dynamic> json, String basePath) {
+    final rawUniverse = json['universe'] as String?;
     return Ebook(
       path: basePath,
       title: json['title'] as String? ?? 'Unknown',
       author: json['author'] as String? ?? 'Unknown',
+      universe: rawUniverse != null && rawUniverse.trim().isNotEmpty
+          ? rawUniverse.trim()
+          : null,
       series: json['series'] as String?,
       seriesSequence: json['seriesSequence'] as String?,
       description: json['description'] as String?,
@@ -75,6 +83,7 @@ class Ebook {
         'path': path,
         'title': title,
         'author': author,
+        'universe': universe,
         'series': series,
         'seriesSequence': seriesSequence,
         'description': description,

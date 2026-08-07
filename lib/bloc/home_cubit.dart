@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 
 import '../models/audiobook.dart';
 import '../models/ebook.dart';
+import '../models/playlist.dart';
 import '../service_locator.dart';
 import '../services/audiobook_scanner.dart';
 import '../services/library_storage.dart';
@@ -404,10 +405,12 @@ class HomeCubit extends Cubit<HomeState> {
     emit(state.copyWith(fetchingMetadata: newFetching, metadataFetchTotalCount: newTotal));
 
     try {
-      final metaFile = File('${book.path}${Platform.pathSeparator}metadata.json');
-      final coverFile = File('${book.path}${Platform.pathSeparator}cover.jpg');
+      final bookMeta = File(p.join(book.path, 'book.metadata.json'));
+      final legacyMeta = File(p.join(book.path, 'metadata.json'));
+      final coverFile = File(p.join(book.path, 'cover.jpg'));
       
-      if (await metaFile.exists()) await metaFile.delete();
+      if (await bookMeta.exists()) await bookMeta.delete();
+      if (await legacyMeta.exists()) await legacyMeta.delete();
       if (await coverFile.exists()) await coverFile.delete();
       
       _enqueueBooks([book.copyWith(hasMetadataLocally: false)]);
@@ -511,9 +514,9 @@ class HomeCubit extends Cubit<HomeState> {
       await _storage.saveAudiobooks(currentBooks);
     }
 
-    // Also update metadata.json if it exists
+    // Also update book.metadata.json if it exists
     try {
-      final metaFile = File('${book.path}${Platform.pathSeparator}metadata.json');
+      final metaFile = AudiobookScanner.getBookMetadataFile(book.path);
       if (await metaFile.exists()) {
         final content = await metaFile.readAsString();
         final json = jsonDecode(content) as Map<String, dynamic>;
@@ -521,6 +524,44 @@ class HomeCubit extends Cubit<HomeState> {
         json['chapters'] = calculatedChapters.map((c) => c.toJson()).toList();
         await metaFile.writeAsString(jsonEncode(json));
       }
+    } catch (_) {}
+
+    return updatedBook;
+  }
+
+  /// Replaces chapter structure after on-device detection review.
+  Future<Audiobook> applyDetectedChapters(
+    Audiobook book,
+    List<Chapter> chapters,
+  ) async {
+    final durationStr = chapters.isEmpty
+        ? book.durationFormatted
+        : AudiobookScanner.formatDuration(chapters.last.end);
+
+    final updatedBook = book.copyWith(
+      chapters: chapters,
+      totalChapters: chapters.length,
+      durationFormatted: durationStr,
+    );
+
+    final currentBooks = List<Audiobook>.from(state.audiobooks);
+    final index = currentBooks.indexWhere((b) => b.path == book.path);
+    if (index != -1) {
+      currentBooks[index] = updatedBook;
+      emit(state.copyWith(audiobooks: currentBooks));
+      await _storage.saveAudiobooks(currentBooks);
+    }
+
+    try {
+      final metaFile = AudiobookScanner.getBookMetadataFile(book.path);
+      Map<String, dynamic> json = {};
+      if (await metaFile.exists()) {
+        json = jsonDecode(await metaFile.readAsString()) as Map<String, dynamic>;
+      }
+      json['durationFormatted'] = durationStr;
+      json['totalChapters'] = chapters.length;
+      json['chapters'] = chapters.map((c) => c.toJson()).toList();
+      await metaFile.writeAsString(jsonEncode(json));
     } catch (_) {}
 
     return updatedBook;
@@ -566,5 +607,48 @@ class HomeCubit extends Cubit<HomeState> {
     } catch (e) {
       emit(state.copyWith(error: e.toString()));
     }
+  }
+
+  void setActivePlaylist(int? playlistId) {
+    emit(state.copyWith(activePlaylistId: playlistId, clearActivePlaylist: playlistId == null));
+  }
+
+  Future<Audiobook?> onAudiobookCompleted(Audiobook currentBook) async {
+    // 1. Mark as read
+    if (!currentBook.isRead) {
+      await toggleReadStatus(currentBook);
+    }
+
+    // 2. Find next book
+    if (state.activePlaylistId != null) {
+      final playlist = state.playlists.firstWhere((p) => p.id == state.activePlaylistId, orElse: () => Playlist(id: -1, name: ''));
+      if (playlist.id != -1) {
+        final currentIndex = playlist.bookPaths.indexOf(currentBook.path);
+        if (currentIndex != -1 && currentIndex < playlist.bookPaths.length - 1) {
+          final nextBookPath = playlist.bookPaths[currentIndex + 1];
+          return state.audiobooks.firstWhere((b) => b.path == nextBookPath, orElse: () => currentBook);
+        }
+      }
+    } else if (currentBook.series != null && currentBook.series!.isNotEmpty) {
+      // Find books in the same series
+      final seriesBooks = state.audiobooks.where((b) => b.series == currentBook.series).toList();
+      
+      // Sort by sequence or title
+      seriesBooks.sort((a, b) {
+        final seqA = double.tryParse(a.seriesSequence ?? '') ?? double.infinity;
+        final seqB = double.tryParse(b.seriesSequence ?? '') ?? double.infinity;
+        if (seqA != double.infinity || seqB != double.infinity) {
+          return seqA.compareTo(seqB);
+        }
+        return a.title.compareTo(b.title);
+      });
+
+      final currentIndex = seriesBooks.indexWhere((b) => b.path == currentBook.path);
+      if (currentIndex != -1 && currentIndex < seriesBooks.length - 1) {
+        return seriesBooks[currentIndex + 1];
+      }
+    }
+
+    return null; // No next book found
   }
 }

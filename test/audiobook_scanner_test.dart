@@ -5,24 +5,27 @@ import 'package:audiobook_player/models/audiobook.dart';
 
 void main() {
   group('AudiobookScanner parseDirPath tests', () {
-    test('author/saga/book/parts pattern (4 segments)', () {
+    test('author/universe/saga/book pattern (4 segments)', () {
       final base = '/Users/user/audiobooks';
-      final path = '$base/J.R.R. Tolkien/The Lord of the Rings/The Fellowship of the Ring/parts';
+      final path =
+          '$base/Brandon Sanderson/Cosmere/Mistborn/The Final Empire';
       final metadata = AudiobookScanner.parseDirPath(path, base);
-      
+
       expect(metadata, isNotNull);
-      expect(metadata!.author, 'J.R.R. Tolkien');
-      expect(metadata.saga, 'The Lord of the Rings');
-      expect(metadata.bookTitle, 'The Fellowship of the Ring');
+      expect(metadata!.author, 'Brandon Sanderson');
+      expect(metadata.universe, 'Cosmere');
+      expect(metadata.saga, 'Mistborn');
+      expect(metadata.bookTitle, 'The Final Empire');
     });
 
     test('author/saga/book pattern (3 segments)', () {
       final base = '/Users/user/audiobooks';
       final path = '$base/Brandon Sanderson/Mistborn/The Final Empire';
       final metadata = AudiobookScanner.parseDirPath(path, base);
-      
+
       expect(metadata, isNotNull);
       expect(metadata!.author, 'Brandon Sanderson');
+      expect(metadata.universe, isNull);
       expect(metadata.saga, 'Mistborn');
       expect(metadata.bookTitle, 'The Final Empire');
     });
@@ -31,11 +34,29 @@ void main() {
       final base = '/Users/user/audiobooks';
       final path = '$base/Neil Gaiman/Neverwhere';
       final metadata = AudiobookScanner.parseDirPath(path, base);
-      
+
       expect(metadata, isNotNull);
       expect(metadata!.author, 'Neil Gaiman');
       expect(metadata.saga, isNull);
       expect(metadata.bookTitle, 'Neverwhere');
+    });
+  });
+
+  group('AudiobookScanner part folder detection', () {
+    test('recognizes discs, parts and eras', () {
+      expect(AudiobookScanner.looksLikePartFolder('CD1'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Disc 2'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Part 3'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Era 1'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('01'), isTrue);
+    });
+
+    test('does not treat numbered book titles as parts', () {
+      expect(
+        AudiobookScanner.looksLikePartFolder('01 - The Final Empire'),
+        isFalse,
+      );
+      expect(AudiobookScanner.looksLikePartFolder('Mistborn'), isFalse);
     });
   });
 

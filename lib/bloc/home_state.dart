@@ -17,6 +17,7 @@ class HomeState extends Equatable {
   final List<Audiobook> audiobooks;
   final List<Ebook> ebooks;
   final List<Playlist> playlists;
+  final int? activePlaylistId;
   final bool isLoading;
   final bool isScanning;
   final double? scanProgress;
@@ -29,6 +30,7 @@ class HomeState extends Equatable {
     this.audiobooks = const [],
     this.ebooks = const [],
     this.playlists = const [],
+    this.activePlaylistId,
     this.isLoading = false,
     this.isScanning = false,
     this.scanProgress,
@@ -42,18 +44,21 @@ class HomeState extends Equatable {
     List<Audiobook>? audiobooks,
     List<Ebook>? ebooks,
     List<Playlist>? playlists,
+    int? activePlaylistId,
     bool? isLoading,
     bool? isScanning,
     double? scanProgress,
     String? error,
     Map<String, BookFetchStatus>? fetchingMetadata,
     int? metadataFetchTotalCount,
+    bool clearActivePlaylist = false,
   }) {
     return HomeState(
       scanPaths: scanPaths ?? this.scanPaths,
       audiobooks: audiobooks ?? this.audiobooks,
       ebooks: ebooks ?? this.ebooks,
       playlists: playlists ?? this.playlists,
+      activePlaylistId: clearActivePlaylist ? null : (activePlaylistId ?? this.activePlaylistId),
       isLoading: isLoading ?? this.isLoading,
       isScanning: isScanning ?? this.isScanning,
       scanProgress: scanProgress ?? this.scanProgress,
@@ -64,18 +69,7 @@ class HomeState extends Equatable {
   }
 
   HomeState clearError() {
-    return HomeState(
-      scanPaths: scanPaths,
-      audiobooks: audiobooks,
-      ebooks: ebooks,
-      playlists: playlists,
-      isLoading: isLoading,
-      isScanning: isScanning,
-      scanProgress: scanProgress,
-      error: null,
-      fetchingMetadata: fetchingMetadata,
-      metadataFetchTotalCount: metadataFetchTotalCount,
-    );
+    return copyWith(error: null);
   }
 
   @override
@@ -84,6 +78,7 @@ class HomeState extends Equatable {
         audiobooks,
         ebooks,
         playlists,
+        activePlaylistId,
         isLoading,
         isScanning,
         scanProgress,

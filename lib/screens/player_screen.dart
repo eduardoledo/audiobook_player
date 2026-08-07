@@ -12,6 +12,8 @@ import '../service_locator.dart';
 import '../services/audio_player_service.dart';
 import '../services/library_storage.dart';
 import '../services/metadata_fetcher.dart';
+import '../utils/structure_detection_flow.dart';
+import '../widgets/structure_detection_banner.dart';
 import 'eq_analyzer_sheet.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -28,6 +30,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late final LibraryStorage _storage;
   bool _showChapters = false;
   List<Bookmark> _bookmarks = [];
+  StreamSubscription? _playerStateSubscription;
 
   @override
   void initState() {
@@ -42,6 +45,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!widget.audiobook.hasMetadataLocally) {
       MetadataFetcher.enqueue([widget.audiobook]);
     }
+
+    final cubit = context.read<HomeCubit>();
+    _playerStateSubscription = _playerService.playerStateStream.listen((state) async {
+      if (state.processingState == ProcessingState.completed) {
+        final nextBook = await cubit.onAudiobookCompleted(widget.audiobook);
+        if (!mounted) return;
+        if (nextBook != null) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => BlocProvider.value(
+                value: cubit,
+                child: PlayerScreen(audiobook: nextBook),
+              ),
+            ),
+          );
+        } else {
+          Navigator.pop(context);
+        }
+      }
+    });
   }
 
   Future<void> _initPlayer() async {
@@ -49,7 +73,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final progress = await _storage.getPlaybackProgress(widget.audiobook.path);
     final chapterIndex = progress?['chapterIndex'] ?? 0;
     final positionMs = progress?['positionMs'] ?? 0;
-    
+
     // Ensure durations are calculated if needed before setting audiobook
     if (!mounted) return;
     final cubit = context.read<HomeCubit>();
@@ -59,9 +83,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     debugPrint('PlayerScreen: chapters check completed, setting audiobook details');
 
     await _playerService.setAudiobook(
-      book, 
-      chapterIndex: chapterIndex, 
+      book,
+      chapterIndex: chapterIndex,
       position: Duration(milliseconds: positionMs),
+      rewindForResume: positionMs > 0,
     );
     debugPrint('PlayerScreen: _initPlayer finished successfully');
   }
@@ -121,6 +146,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
+    _playerStateSubscription?.cancel();
     super.dispose();
   }
 
@@ -156,6 +182,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
             elevation: 0,
             actions: [
               IconButton(
+                icon: const Icon(Icons.account_tree),
+                onPressed: () => runStructureDetectionFlow(context, currentBook),
+                tooltip: 'Detectar estructura',
+              ),
+              IconButton(
                 icon: const Icon(Icons.cloud_sync_outlined),
                 onPressed: () {
                   context.read<HomeCubit>().forceFetchMetadata(currentBook);
@@ -181,6 +212,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
           body: Column(
             children: [
+              const StructureDetectionBanner(),
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(24),

@@ -7,6 +7,7 @@ class Audiobook {
   final String title;
   final String author;
   final String? narrator;
+  final String? universe;
   final String? series;
   final String? seriesSequence;
   final String? description;
@@ -26,6 +27,7 @@ class Audiobook {
     required this.title,
     required this.author,
     this.narrator,
+    this.universe,
     this.series,
     this.seriesSequence,
     this.description,
@@ -47,6 +49,7 @@ class Audiobook {
         .toList();
 
     final audio = json['audio'] as Map<String, dynamic>? ?? {};
+    final rawUniverse = json['universe'] as String?;
 
     return Audiobook(
       // id: '${basePath}_${json['files'] ?? ''}',
@@ -54,6 +57,9 @@ class Audiobook {
       title: json['title'] as String? ?? 'Unknown',
       author: json['author'] as String? ?? 'Unknown',
       narrator: json['narrator'] as String?,
+      universe: rawUniverse != null && rawUniverse.trim().isNotEmpty
+          ? rawUniverse.trim()
+          : null,
       series: json['series'] as String? ?? json['album'] as String?,
       seriesSequence: json['seriesSequence'] as String?,
       description: json['description'] as String?,
@@ -74,6 +80,7 @@ class Audiobook {
     String? title,
     String? author,
     String? narrator,
+    String? universe,
     String? series,
     String? seriesSequence,
     String? description,
@@ -92,6 +99,7 @@ class Audiobook {
       title: title ?? this.title,
       author: author ?? this.author,
       narrator: narrator ?? this.narrator,
+      universe: universe ?? this.universe,
       series: series ?? this.series,
       seriesSequence: seriesSequence ?? this.seriesSequence,
       description: description ?? this.description,
@@ -115,6 +123,7 @@ class Audiobook {
         'title': title,
         'author': author,
         'narrator': narrator,
+        'universe': universe,
         'series': series,
         'seriesSequence': seriesSequence,
         'description': description,

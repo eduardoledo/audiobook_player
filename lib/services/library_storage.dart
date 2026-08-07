@@ -7,6 +7,7 @@ import '../models/audiobook.dart';
 import '../models/ebook.dart';
 import '../models/bookmark.dart';
 import '../models/playlist.dart';
+import '../models/path_pattern_rule.dart';
 
 /// Persists scan paths and audiobook library using SQLite.
 class LibraryStorage {
@@ -479,6 +480,36 @@ class LibraryStorage {
     return {};
   }
 
+  Future<Map<String, PathPatternRule>> getPathPatternRules() async {
+    final db = await database;
+    final maps = await db.query('settings', where: 'key = ?', whereArgs: ['path_pattern_rules']);
+    if (maps.isNotEmpty) {
+      final jsonStr = maps.first['value'] as String;
+      try {
+        final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
+        return decoded.map((key, value) => MapEntry(
+              key,
+              PathPatternRule.fromJson(value as Map<String, dynamic>),
+            ));
+      } catch (_) {}
+    }
+    return {};
+  }
+
+  Future<void> savePathPatternRule(PathPatternRule rule) async {
+    final current = await getPathPatternRules();
+    current[rule.rootPath] = rule;
+    final db = await database;
+    await db.insert(
+      'settings',
+      {
+        'key': 'path_pattern_rules',
+        'value': jsonEncode(current.map((k, v) => MapEntry(k, v.toJson()))),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
   Future<void> saveSeriesMappingRules(Map<String, List<String>> rules) async {
     final db = await database;
     await db.insert('settings', {
@@ -501,6 +532,7 @@ class LibraryStorage {
     return [
       r'^(?<year>\d{4})\s*-\s*(?<title>[^(]+?)\s*\([^)]*?(?:read by|narrated by)\s*(?<narrator>[^)]+).*$',
       r'\[(?<seriesCode>[A-Za-z]+)\s*(?<seriesSequence>\d+)\]\s*(?<title>.*)',
+      r'^(?<author>[^/]+)/(?<universe>[^/]+)/(?<series>[^/]+)/(?<seriesSequence>\d+)\s*-\s*(?<title>.*)$',
       r'^(?<author>[^/]+)/(?<series>[^/]+)/(?<seriesSequence>\d+)\s*-\s*(?<title>.*)$',
       r'^(?<author>[^/]+)/(?<title>.*)$',
     ];

@@ -85,11 +85,7 @@ class AudioPlayerService {
           case AudioInterruptionType.unknown:
             if (_wasInterrupted) {
               _wasInterrupted = false;
-              // Rewind by 0.5 seconds before resuming
-              final pos = _player.position;
-              final rewindPos = pos - const Duration(milliseconds: 500);
-              _player.seek(rewindPos >= Duration.zero ? rewindPos : Duration.zero);
-              _player.play();
+              unawaited(play());
             }
             break;
         }
@@ -117,19 +113,35 @@ class AudioPlayerService {
 
   AudioPlayer get player => _player;
 
+  /// How far to rewind when resuming from a saved or paused position.
+  static const Duration resumeRewind = Duration(milliseconds: 500);
+
+  /// Returns [saved] minus [resumeRewind], floored at zero.
+  static Duration positionForResume(Duration saved) {
+    if (saved <= resumeRewind) return Duration.zero;
+    return saved - resumeRewind;
+  }
+
   Stream<Duration> get positionStream => _player.positionStream;
   Stream<Duration?> get durationStream => _player.durationStream;
   Stream<PlayerState> get playerStateStream => _player.playerStateStream;
   Stream<int?> get currentIndexStream => _player.currentIndexStream;
 
+  bool get playing => _player.playing;
+
   Duration get position => _player.position;
   Duration? get duration => _player.duration;
   PlayerState get playerState => _player.playerState;
 
-  Future<void> setAudiobook(Audiobook audiobook, {int chapterIndex = 0, Duration position = Duration.zero}) async {
+  Future<void> setAudiobook(
+    Audiobook audiobook, {
+    int chapterIndex = 0,
+    Duration position = Duration.zero,
+    bool rewindForResume = false,
+  }) async {
     currentAudiobook = audiobook;
     getIt<LibraryStorage>().saveLastPlayedBook(audiobook.path);
-    
+
     // Asynchronously load and apply settings
     _loadAndApplyAudioSettings(audiobook.path);
 
@@ -140,8 +152,10 @@ class AudioPlayerService {
     final playlist = audiobook.files.asMap().entries.map((entry) {
       final index = entry.key;
       final path = entry.value;
-      final title = index < audiobook.chapters.length ? audiobook.chapters[index].title : 'Chapter ${index + 1}';
-      
+      final title = index < audiobook.chapters.length
+          ? audiobook.chapters[index].title
+          : 'Chapter ${index + 1}';
+
       return AudioSource.uri(
         Uri.file(path),
         tag: MediaItem(
@@ -152,7 +166,19 @@ class AudioPlayerService {
         ),
       );
     }).toList();
-    await _player.setAudioSources(playlist, initialIndex: chapterIndex, initialPosition: position);
+
+    final startPosition =
+        rewindForResume ? positionForResume(position) : position;
+
+    await _player.setAudioSources(
+      playlist,
+      initialIndex: chapterIndex,
+      initialPosition: startPosition,
+    );
+    // Some backends ignore initialPosition; seek explicitly after load.
+    if (startPosition > Duration.zero) {
+      await _player.seek(startPosition, index: chapterIndex);
+    }
   }
 
   Future<void> _loadAndApplyAudioSettings(String bookPath) async {
@@ -212,7 +238,12 @@ class AudioPlayerService {
     await _player.seek(position);
   }
 
-  Future<void> play() => _player.play();
+  Future<void> play() async {
+    if (!_player.playing && _player.position > Duration.zero) {
+      await _player.seek(positionForResume(_player.position));
+    }
+    await _player.play();
+  }
   Future<void> pause() => _player.pause();
   Future<void> stop() => _player.stop();
 
