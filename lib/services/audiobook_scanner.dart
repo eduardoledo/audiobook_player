@@ -188,8 +188,8 @@ class AudiobookScanner {
   }
 
   /// Reads hierarchical metadata files (author.metadata.json, universe.metadata.json, saga.metadata.json, era.metadata.json) up to scan root.
-  static Future<Map<String, String>> readHierarchyMetadata(String dirPath, String rootDirectoryPath) async {
-    final result = <String, String>{};
+  static Future<Map<String, dynamic>> readHierarchyMetadata(String dirPath, String rootDirectoryPath) async {
+    final result = <String, dynamic>{};
     try {
       var current = Directory(dirPath);
       final root = Directory(rootDirectoryPath);
@@ -203,6 +203,9 @@ class AudiobookScanner {
             if (json['name'] != null && !result.containsKey('author')) {
               result['author'] = json['name'].toString();
             }
+            if (json['readingOrder'] != null && !result.containsKey('readingOrder')) {
+              result['readingOrder'] = json['readingOrder'];
+            }
           } catch (_) {}
         }
 
@@ -213,6 +216,9 @@ class AudiobookScanner {
             final json = jsonDecode(await universeFile.readAsString());
             if (json['name'] != null && !result.containsKey('universe')) {
               result['universe'] = json['name'].toString();
+            }
+            if (json['readingOrder'] != null && !result.containsKey('readingOrder')) {
+              result['readingOrder'] = json['readingOrder'];
             }
           } catch (_) {}
         }
@@ -227,6 +233,9 @@ class AudiobookScanner {
             if (json['name'] != null && !result.containsKey('saga')) {
               result['saga'] = json['name'].toString();
             }
+            if (json['readingOrder'] != null && !result.containsKey('readingOrder')) {
+              result['readingOrder'] = json['readingOrder'];
+            }
           } catch (_) {}
         }
 
@@ -237,6 +246,9 @@ class AudiobookScanner {
             final json = jsonDecode(await eraFile.readAsString());
             if (json['name'] != null && !result.containsKey('era')) {
               result['era'] = json['name'].toString();
+            }
+            if (json['readingOrder'] != null && !result.containsKey('readingOrder')) {
+              result['readingOrder'] = json['readingOrder'];
             }
           } catch (_) {}
         }
@@ -745,8 +757,9 @@ class AudiobookScanner {
       final subdirs = entities.whereType<Directory>().toList();
 
       // Rule 0: Presence of book.metadata.json or metadata.json explicitly marks directory as book
-      final hasBookMeta = getBookMetadataFile(currentPath).existsSync();
-      if (hasBookMeta) {
+      final hasBookMetaFile = File(p.join(currentPath, 'book.metadata.json')).existsSync() ||
+          File(p.join(currentPath, 'metadata.json')).existsSync();
+      if (hasBookMetaFile) {
         final audioFiles = await _listAudioFiles(currentPath, recursive: true);
         if (audioFiles.isNotEmpty) {
           await emitAudiobook(bookPath: currentPath, audioFiles: audioFiles);
@@ -992,6 +1005,10 @@ class AudiobookScanner {
           }
         } catch (_) {}
       }
+    }
+
+    if (seriesSequence == null && hierarchyMeta['readingOrder'] != null) {
+      seriesSequence = hierarchyMeta['readingOrder'].toString();
     }
 
     return Audiobook(
