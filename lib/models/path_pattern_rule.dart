@@ -2,6 +2,7 @@ enum PathSegmentRole {
   author,
   universe,
   saga,
+  era,
   bookTitle,
   part,
   ignore;
@@ -14,10 +15,12 @@ enum PathSegmentRole {
         return 'Universo';
       case PathSegmentRole.saga:
         return 'Saga / Serie';
+      case PathSegmentRole.era:
+        return 'Era';
       case PathSegmentRole.bookTitle:
         return 'Título de Libro';
       case PathSegmentRole.part:
-        return 'Parte / Disco / Era';
+        return 'Parte / Disco';
       case PathSegmentRole.ignore:
         return 'Ignorar';
     }

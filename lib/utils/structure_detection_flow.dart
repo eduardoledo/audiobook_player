@@ -181,10 +181,6 @@ class _LanguageRadioGroup extends StatelessWidget {
     Widget tile(String value, String label, String subtitle) {
       return RadioListTile<String>(
         value: value,
-        groupValue: selected,
-        onChanged: (v) {
-          if (v != null) onChanged(v);
-        },
         activeColor: const Color(0xFFE8B86D),
         title: Text(label, style: const TextStyle(color: Colors.white)),
         subtitle: Text(
@@ -196,12 +192,18 @@ class _LanguageRadioGroup extends StatelessWidget {
       );
     }
 
-    return Column(
-      children: [
-        tile('es', 'Español', 'Recomendado para narraciones en español'),
-        tile('en', 'English', 'For English narration'),
-        tile('auto', 'Automático', 'Más lento; detecta el idioma en cada ventana'),
-      ],
+    return RadioGroup<String>(
+      groupValue: selected,
+      onChanged: (v) {
+        if (v != null) onChanged(v);
+      },
+      child: Column(
+        children: [
+          tile('es', 'Español', 'Optimizado para palabras clave en español'),
+          tile('en', 'Inglés', 'Optimizado para palabras clave en inglés'),
+          tile('auto', 'Auto-detectar', 'Selecciona según idioma detectado/archivos'),
+        ],
+      ),
     );
   }
 }

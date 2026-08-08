@@ -30,15 +30,17 @@ void main() {
       expect(metadata.bookTitle, 'The Final Empire');
     });
 
-    test('author/book pattern (2 segments)', () {
+    test('author/universe/saga/era/book pattern (5 segments)', () {
       final base = '/Users/user/audiobooks';
-      final path = '$base/Neil Gaiman/Neverwhere';
+      final path =
+          '$base/Brandon Sanderson/Cosmere/02 - Mistborn/Era 1/01 - The Final Empire';
       final metadata = AudiobookScanner.parseDirPath(path, base);
 
       expect(metadata, isNotNull);
-      expect(metadata!.author, 'Neil Gaiman');
-      expect(metadata.saga, isNull);
-      expect(metadata.bookTitle, 'Neverwhere');
+      expect(metadata!.author, 'Brandon Sanderson');
+      expect(metadata.universe, 'Cosmere');
+      expect(metadata.saga, '02 - Mistborn');
+      expect(metadata.bookTitle, '01 - The Final Empire');
     });
   });
 

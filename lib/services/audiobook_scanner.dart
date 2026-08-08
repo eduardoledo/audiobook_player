@@ -65,12 +65,19 @@ class AudiobookScanner {
   static const List<String> _audioExtensions = ['.m4b', '.m4a', '.mp3'];
   static const List<String> _ebookExtensions = ['.epub', '.pdf'];
 
-  /// Part/disc/era folder under a multiparte book (e.g. CD1, Disc 2, Era 3).
+  /// Part/disc/era folder under a multiparte book (e.g. CD1, Disc 2, Era 1, Parte II).
   /// Numbered book titles like "01 - The Final Empire" are NOT parts.
   static bool looksLikePartFolder(String name) {
     final n = name.trim();
     if (RegExp(
       r'^(cd|disc|disk|part|parte|disco|libro|era|eras|acto|act|vol|volume|tomo)[\s._-]*\d+',
+      caseSensitive: false,
+    ).hasMatch(n)) {
+      return true;
+    }
+    // Suffixes: "Era 1", "Parte 2", "Volumen 3"
+    if (RegExp(
+      r'^(cd|disc|disk|part|parte|disco|libro|era|eras|acto|act|vol|volume|tomo)\s+[a-zA-Z0-9_-]+$',
       caseSensitive: false,
     ).hasMatch(n)) {
       return true;
@@ -142,13 +149,14 @@ class AudiobookScanner {
     return bookMeta;
   }
 
-  /// Writes author/universe/saga metadata files in parent hierarchy if missing
+  /// Writes author/universe/saga/era metadata files in parent hierarchy if missing
   static Future<void> ensureParentMetadataFiles({
     required String dirPath,
     required String rootDirectoryPath,
     String? author,
     String? universe,
     String? saga,
+    String? era,
   }) async {
     try {
       var current = Directory(dirPath);
@@ -157,26 +165,54 @@ class AudiobookScanner {
       while (current.path != root.path && current.path.startsWith(root.path)) {
         final currentName = p.basename(current.path);
 
+        // Extract potential readingOrder prefix/suffix (e.g. "01 - Mistborn" -> "1", "Era 1" -> "1")
+        String? order;
+        final prefixMatch = RegExp(r'^\s*(\d+(?:\.\d+)?)\s*[-._\)\s]').firstMatch(currentName);
+        if (prefixMatch != null) {
+          order = prefixMatch.group(1);
+        } else {
+          final suffixMatch = RegExp(r'[-._\)\s](\d+(?:\.\d+)?)\s*$').firstMatch(currentName);
+          if (suffixMatch != null) {
+            order = suffixMatch.group(1);
+          }
+        }
+
         if (author != null && currentName.toLowerCase() == author.toLowerCase()) {
           final authorFile = File(p.join(current.path, 'author.metadata.json'));
           if (!await authorFile.exists()) {
-            await authorFile.writeAsString(jsonEncode({'name': author, 'type': 'author'}));
+            final data = <String, dynamic>{'name': author, 'type': 'author'};
+            if (order != null) data['readingOrder'] = order;
+            await authorFile.writeAsString(jsonEncode(data));
           }
         }
         if (universe != null && currentName.toLowerCase() == universe.toLowerCase()) {
           final universeFile = File(p.join(current.path, 'universe.metadata.json'));
           if (!await universeFile.exists()) {
-            await universeFile.writeAsString(jsonEncode({'name': universe, 'type': 'universe'}));
+            final data = <String, dynamic>{'name': universe, 'type': 'universe'};
+            if (order != null) data['readingOrder'] = order;
+            await universeFile.writeAsString(jsonEncode(data));
           }
         }
         if (saga != null && currentName.toLowerCase() == saga.toLowerCase()) {
           final sagaFile = File(p.join(current.path, 'saga.metadata.json'));
           if (!await sagaFile.exists()) {
-            await sagaFile.writeAsString(jsonEncode({'name': saga, 'type': 'saga'}));
+            final data = <String, dynamic>{'name': saga, 'type': 'saga'};
+            if (order != null) data['readingOrder'] = order;
+            await sagaFile.writeAsString(jsonEncode(data));
           }
           final seriesFile = File(p.join(current.path, 'series.metadata.json'));
           if (!await seriesFile.exists()) {
-            await seriesFile.writeAsString(jsonEncode({'name': saga, 'type': 'series'}));
+            final data = <String, dynamic>{'name': saga, 'type': 'series'};
+            if (order != null) data['readingOrder'] = order;
+            await seriesFile.writeAsString(jsonEncode(data));
+          }
+        }
+        if (era != null && currentName.toLowerCase() == era.toLowerCase()) {
+          final eraFile = File(p.join(current.path, 'era.metadata.json'));
+          if (!await eraFile.exists()) {
+            final data = <String, dynamic>{'name': era, 'type': 'era'};
+            if (order != null) data['readingOrder'] = order;
+            await eraFile.writeAsString(jsonEncode(data));
           }
         }
 
@@ -300,6 +336,8 @@ class AudiobookScanner {
           case PathSegmentRole.saga:
             saga = val;
             break;
+          case PathSegmentRole.era:
+            break;
           case PathSegmentRole.bookTitle:
             bookTitle = val;
             break;
@@ -330,12 +368,21 @@ class AudiobookScanner {
         bookTitle: segments[2],
       );
     }
-    // 4+: Author / Universe / Saga / Title (/ ignored extras)
+    if (segments.length == 4) {
+      return DirPathMetadata(
+        author: segments[0],
+        universe: segments[1],
+        saga: segments[2],
+        bookTitle: segments[3],
+      );
+    }
+    // 5+: Author / Universe / Saga / Era / BookTitle (/ ignored extras)
+    final isFourthEra = looksLikePartFolder(segments[3]);
     return DirPathMetadata(
       author: segments[0],
       universe: segments[1],
       saga: segments[2],
-      bookTitle: segments[3],
+      bookTitle: isFourthEra ? segments.last : segments[3],
     );
   }
 
@@ -1004,6 +1051,21 @@ class AudiobookScanner {
             break;
           }
         } catch (_) {}
+      }
+    }
+
+    if (seriesSequence == null) {
+      final folderName = p.basename(dirPath);
+      // Try prefix: "01 - Elantris", "02 - Mistborn", "1. Title"
+      final prefixMatch = RegExp(r'^\s*(\d+(?:\.\d+)?)\s*[-._\)\s]').firstMatch(folderName);
+      if (prefixMatch != null) {
+        seriesSequence = prefixMatch.group(1);
+      } else {
+        // Try suffix: "Elantris 1", "Mistborn Era 1", "Book 2"
+        final suffixMatch = RegExp(r'[-._\)\s](\d+(?:\.\d+)?)\s*$').firstMatch(folderName);
+        if (suffixMatch != null) {
+          seriesSequence = suffixMatch.group(1);
+        }
       }
     }
 
