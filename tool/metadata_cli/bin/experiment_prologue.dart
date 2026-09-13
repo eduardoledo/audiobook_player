@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:metadata_cli/chapter_phrase_locator.dart';
 import 'package:metadata_cli/epub_structure.dart';
 import 'package:metadata_cli/proximity_windows.dart';
-import 'package:metadata_cli/structure_match.dart';
 import 'package:path/path.dart' as p;
 
 /// Focused experiment: locate prologue (and optionally first N chapters).

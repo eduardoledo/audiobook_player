@@ -83,7 +83,7 @@ EpubStructure parseEpubStructure(String epubPath, {int phraseWordCount = 10}) {
     throw StateError('Invalid EPUB: missing META-INF/container.xml');
   }
   final rootfile = container
-      .findAllElements('rootfile', namespace: '*')
+      .findAllElements('rootfile', namespaceUri: '*')
       .map((e) => e.getAttribute('full-path'))
       .whereType<String>()
       .firstOrNull;
@@ -98,7 +98,7 @@ EpubStructure parseEpubStructure(String epubPath, {int phraseWordCount = 10}) {
   }
 
   final manifest = <String, String>{};
-  for (final item in opf.findAllElements('item', namespace: '*')) {
+  for (final item in opf.findAllElements('item', namespaceUri: '*')) {
     final id = item.getAttribute('id');
     final href = item.getAttribute('href');
     if (id != null && href != null) {
@@ -107,7 +107,7 @@ EpubStructure parseEpubStructure(String epubPath, {int phraseWordCount = 10}) {
   }
 
   final spineHrefs = <String>[];
-  for (final itemref in opf.findAllElements('itemref', namespace: '*')) {
+  for (final itemref in opf.findAllElements('itemref', namespaceUri: '*')) {
     final idref = itemref.getAttribute('idref');
     if (idref == null) continue;
     final href = manifest[idref];
@@ -116,7 +116,7 @@ EpubStructure parseEpubStructure(String epubPath, {int phraseWordCount = 10}) {
 
   String? ncxPath;
   String? navPath;
-  for (final item in opf.findAllElements('item', namespace: '*')) {
+  for (final item in opf.findAllElements('item', namespaceUri: '*')) {
     final props = item.getAttribute('properties') ?? '';
     final media = item.getAttribute('media-type') ?? '';
     final href = item.getAttribute('href');
@@ -528,7 +528,7 @@ List<({String title, String href})> _parseNcx(
     }
   }
 
-  final navMap = doc.findAllElements('navMap', namespace: '*').firstOrNull;
+  final navMap = doc.findAllElements('navMap', namespaceUri: '*').firstOrNull;
   if (navMap != null) walk(navMap);
   return out;
 }
@@ -541,7 +541,7 @@ List<({String title, String href})> _parseNav(
   if (doc == null) return [];
   final navDir = p.posix.dirname(navPath);
   final out = <({String title, String href})>[];
-  for (final a in doc.findAllElements('a', namespace: '*')) {
+  for (final a in doc.findAllElements('a', namespaceUri: '*')) {
     final href = a.getAttribute('href');
     final title = a.innerText.trim();
     if (href == null || href.isEmpty || title.isEmpty) continue;

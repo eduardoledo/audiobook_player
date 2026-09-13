@@ -42,7 +42,7 @@ Future<String> resolveSherpaNativeLibDir() async {
 
   // Copy from pub-cache into CLI cache so the next run (and AOT) works.
   final sources = [
-    if (fromPackage != null) fromPackage,
+    ?fromPackage,
     ..._fromPubCache(arch),
   ];
   for (final src in sources) {
