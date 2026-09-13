@@ -116,3 +116,6 @@ The operational mandate requiring the agent to prepare a clean git commit messag
 
 ### Post-Commit Ticket Status Report Rule
 Upon completing a ticket implementation, obtaining user approval, and executing the git commit/push, the agent must immediately display an updated list of all remaining pending tickets on the frontier.
+
+### Clickable File Links in Reports Rule
+Whenever displaying ticket lists, file paths, or reports, every ticket title/path must be rendered as an explicit clickable markdown file link using the `file:///` URI scheme (e.g. `[04-multi-root-library.md](file:///home/eduardo/Development/audiobook_player/.scratch/smart-audiobook-player-parity/issues/04-multi-root-library-and-cover-art-resolver.md)`) so the user can click directly on the file to view its full contents in the IDE.
