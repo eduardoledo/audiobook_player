@@ -116,6 +116,15 @@ A pure, stateless domain service (`PathMetadataParser`) responsible for classify
 ### Hierarchical Reading Order Key
 A composite double array (e.g. `[2.0, 1.0]`) extracted from folder hierarchy levels (Universe, Saga, Era, Book) used to sort audiobooks chronologically or in exact narrative sequence across the library.
 
+### Sanitized Book Title Storage
+The policy ensuring that `AudiobookScanner` strips detected publication year brackets (`(2006)`) and parenthetical narrator markers (`(read by Frank Muller)`) from `bookTitle` before persisting records to SQLite, while preserving explicit user JSON overrides in local `book.metadata.json` files.
+
+### Standalone Book Node Placement
+The library rendering and parsing rule where standalone audiobooks lacking saga/universe subdivisions (`Author/BookTitle`) assign `saga = null` and `universe = null`, displaying directly under their Author's expandable node in the library UI tree without dummy category folders.
+
+### Hierarchy Level Deduplication
+The path parsing rule enforcing that if a lower-level hierarchy node (`saga`, `era`, `bookTitle`) matches a higher-level parent node (`author`, `universe`, `saga`) after string normalization, the lower-level field is set to `null` to prevent redundant nested category subfolders.
+
 ---
 
 ## Development & Workflow Discipline
