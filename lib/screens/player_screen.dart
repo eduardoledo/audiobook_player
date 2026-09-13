@@ -233,7 +233,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
     
     if (label != null) {
-      await _storage.addBookmark(widget.audiobook.path, posMs, label.isEmpty ? null : label);
+      await _storage.addBookmark(
+        Bookmark(
+          bookPath: widget.audiobook.path,
+          positionMs: posMs,
+          label: label.isEmpty ? null : label,
+        ),
+      );
       await _loadBookmarks();
       setState(() => _showChapters = true);
     }
