@@ -5,9 +5,9 @@ Multi-root directory scanning with category tags, automatic book status lifecycl
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Support registering multiple root folders with category labels
-- [ ] Automatic status update (`New` on scan, `In Progress` on play start, `Finished` at >98% progress)
-- [ ] `CoverArtResolver` enforcing resolution order: `cover.jpg/png` -> ID3/MP4 metadata -> User prompt for online search -> Asset placeholder
-- [ ] Unit tests for status transition logic and cover art priority fallbacks
+- [x] Support registering multiple root folders with category labels
+- [x] Automatic status update (`New` on scan, `In Progress` on play start, `Finished` at >98% progress)
+- [x] `CoverArtResolver` enforcing resolution order: `cover.jpg/png` -> ID3/MP4 metadata -> User prompt for online search -> Asset placeholder
+- [x] Unit tests for status transition logic and cover art priority fallbacks
