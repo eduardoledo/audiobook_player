@@ -158,3 +158,6 @@ Upon completing any implementation ticket (with tests passing and commit/push co
 
 ### Zero Current Problems Quality Invariant
 Every code implementation, refactor, or hotfix must strictly leave `flutter analyze lib/` and `@current_problems` 100% clean (0 errors, 0 warnings). Code is considered invalid and non-commit-ready if any analyzer issues remain unresolved.
+
+### Asynchronous Background App Build & Deployment Policy
+Whenever launching or compiling the application (`flutter run`, `flutter build`, `adb install`), the agent must execute the build/deploy operation in a non-blocking background process or sub-agent, immediately returning control to the user so the development workflow continues without delay.
