@@ -128,6 +128,24 @@ class HomeCubit extends Cubit<HomeState> {
     MetadataFetcher.enqueue(booksToFetch);
   }
 
+  /// Enqueues online metadata fetch for a book (used after user confirmation).
+  void enqueueMetadataFetch(Audiobook book) {
+    _enqueueBooks([book]);
+  }
+
+  /// Marks that the user declined online metadata so we do not ask again on open.
+  /// Manual "Refresh Metadata" can still force a fetch later.
+  Future<void> skipOnlineMetadata(Audiobook book) async {
+    final currentBooks = List<Audiobook>.from(state.audiobooks);
+    final index = currentBooks.indexWhere((b) => b.path == book.path);
+    if (index == -1) return;
+
+    final updated = currentBooks[index].copyWith(hasMetadataLocally: true);
+    currentBooks[index] = updated;
+    emit(state.copyWith(audiobooks: currentBooks));
+    await _storage.saveAudiobooks(currentBooks);
+  }
+
   void _enqueueEbooks(List<Ebook> ebooks) {
     final ebooksToFetch = ebooks.where((b) => !b.hasMetadataLocally).toList();
     if (ebooksToFetch.isEmpty) return;
@@ -202,6 +220,9 @@ class HomeCubit extends Cubit<HomeState> {
                  subjects: oldBook.subjects,
                  coverPath: oldBook.coverPath,
                  series: oldBook.series,
+                 seriesSequence: oldBook.seriesSequence,
+                 universe: oldBook.universe,
+                 isRead: oldBook.isRead,
                );
             } else {
                currentBooks.add(message.audiobook!);
@@ -287,6 +308,9 @@ class HomeCubit extends Cubit<HomeState> {
                      subjects: oldBook.subjects,
                      coverPath: oldBook.coverPath,
                      series: oldBook.series,
+                     seriesSequence: oldBook.seriesSequence,
+                     universe: oldBook.universe,
+                     isRead: oldBook.isRead,
                    );
                 } else {
                    allBooks.add(message.audiobook!);
@@ -357,6 +381,16 @@ class HomeCubit extends Cubit<HomeState> {
       emit(state.copyWith(audiobooks: currentBooks));
       await _storage.saveAudiobooks(currentBooks);
     }
+  }
+
+  Future<void> markAsRead(Audiobook book) async {
+    if (book.isRead) return;
+    final currentBooks = List<Audiobook>.from(state.audiobooks);
+    final index = currentBooks.indexWhere((b) => b.path == book.path);
+    if (index == -1) return;
+    currentBooks[index] = currentBooks[index].copyWith(isRead: true);
+    emit(state.copyWith(audiobooks: currentBooks));
+    await _storage.saveAudiobooks(currentBooks);
   }
 
   void cancelScan() {
@@ -613,42 +647,154 @@ class HomeCubit extends Cubit<HomeState> {
     emit(state.copyWith(activePlaylistId: playlistId, clearActivePlaylist: playlistId == null));
   }
 
-  Future<Audiobook?> onAudiobookCompleted(Audiobook currentBook) async {
-    // 1. Mark as read
-    if (!currentBook.isRead) {
-      await toggleReadStatus(currentBook);
+  /// Orders books for series/universe playback:
+  /// hierarchical readingOrderKey (saga → era → book) → sequence → year → title.
+  ///
+  /// When a universe mixes numbered standalones and sagas, books of a saga
+  /// form a contiguous block under the saga's order token before the next item.
+  static int compareLibraryOrder(Audiobook a, Audiobook b) {
+    final keyA = a.readingOrderKey;
+    final keyB = b.readingOrderKey;
+    if (keyA.isNotEmpty || keyB.isNotEmpty) {
+      final cmp = AudiobookScanner.compareReadingOrderKeys(keyA, keyB);
+      if (cmp != 0) return cmp;
     }
 
-    // 2. Find next book
-    if (state.activePlaylistId != null) {
-      final playlist = state.playlists.firstWhere((p) => p.id == state.activePlaylistId, orElse: () => Playlist(id: -1, name: ''));
-      if (playlist.id != -1) {
-        final currentIndex = playlist.bookPaths.indexOf(currentBook.path);
-        if (currentIndex != -1 && currentIndex < playlist.bookPaths.length - 1) {
-          final nextBookPath = playlist.bookPaths[currentIndex + 1];
-          return state.audiobooks.firstWhere((b) => b.path == nextBookPath, orElse: () => currentBook);
-        }
-      }
-    } else if (currentBook.series != null && currentBook.series!.isNotEmpty) {
-      // Find books in the same series
-      final seriesBooks = state.audiobooks.where((b) => b.series == currentBook.series).toList();
-      
-      // Sort by sequence or title
-      seriesBooks.sort((a, b) {
-        final seqA = double.tryParse(a.seriesSequence ?? '') ?? double.infinity;
-        final seqB = double.tryParse(b.seriesSequence ?? '') ?? double.infinity;
-        if (seqA != double.infinity || seqB != double.infinity) {
-          return seqA.compareTo(seqB);
-        }
-        return a.title.compareTo(b.title);
-      });
-
-      final currentIndex = seriesBooks.indexWhere((b) => b.path == currentBook.path);
-      if (currentIndex != -1 && currentIndex < seriesBooks.length - 1) {
-        return seriesBooks[currentIndex + 1];
-      }
+    final seqA = double.tryParse(a.seriesSequence ?? '');
+    final seqB = double.tryParse(b.seriesSequence ?? '');
+    if (seqA != null && seqB != null) {
+      final cmp = seqA.compareTo(seqB);
+      if (cmp != 0) return cmp;
+    } else if (seqA != null) {
+      return -1;
+    } else if (seqB != null) {
+      return 1;
     }
 
-    return null; // No next book found
+    final yearA = int.tryParse(a.publishYear ?? '');
+    final yearB = int.tryParse(b.publishYear ?? '');
+    if (yearA != null && yearB != null) {
+      final cmp = yearA.compareTo(yearB);
+      if (cmp != 0) return cmp;
+    } else if (yearA != null) {
+      return -1;
+    } else if (yearB != null) {
+      return 1;
+    }
+
+    final seriesCmp = (a.series ?? '').compareTo(b.series ?? '');
+    if (seriesCmp != 0) return seriesCmp;
+    return a.title.compareTo(b.title);
   }
+
+  Audiobook? _bookByPath(String path) {
+    for (final b in state.audiobooks) {
+      if (b.path == path) return b;
+    }
+    return null;
+  }
+
+  Audiobook? _nextInPlaylist(Audiobook currentBook) {
+    final playlistId = state.activePlaylistId;
+    if (playlistId == null) return null;
+
+    Playlist? playlist;
+    for (final p in state.playlists) {
+      if (p.id == playlistId) {
+        playlist = p;
+        break;
+      }
+    }
+    if (playlist == null) return null;
+
+    final currentIndex = playlist.bookPaths.indexOf(currentBook.path);
+    if (currentIndex == -1 || currentIndex >= playlist.bookPaths.length - 1) {
+      return null;
+    }
+    return _bookByPath(playlist.bookPaths[currentIndex + 1]);
+  }
+
+  Audiobook? _nextInSeries(Audiobook currentBook) {
+    final series = currentBook.series?.trim();
+    if (series == null || series.isEmpty) return null;
+
+    final seriesBooks = state.audiobooks.where((b) {
+      if (b.series != series) return false;
+      if (b.author != currentBook.author) return false;
+      final u = currentBook.universe;
+      if (u != null &&
+          u.isNotEmpty &&
+          b.universe != null &&
+          b.universe!.isNotEmpty &&
+          b.universe != u) {
+        return false;
+      }
+      return true;
+    }).toList()
+      ..sort(compareLibraryOrder);
+
+    final currentIndex =
+        seriesBooks.indexWhere((b) => b.path == currentBook.path);
+    if (currentIndex == -1 || currentIndex >= seriesBooks.length - 1) {
+      return null;
+    }
+    return seriesBooks[currentIndex + 1];
+  }
+
+  Audiobook? _nextInUniverse(Audiobook currentBook) {
+    final universe = currentBook.universe?.trim();
+    if (universe == null || universe.isEmpty) return null;
+
+    final universeBooks = state.audiobooks.where((b) {
+      return b.author == currentBook.author && b.universe == universe;
+    }).toList()
+      ..sort(compareLibraryOrder);
+
+    final currentIndex =
+        universeBooks.indexWhere((b) => b.path == currentBook.path);
+    if (currentIndex == -1 || currentIndex >= universeBooks.length - 1) {
+      return null;
+    }
+    return universeBooks[currentIndex + 1];
+  }
+
+  /// Marks the book as read and resolves what to play next (if anything).
+  /// Active playlist auto-advances; series/universe only proposes.
+  Future<AudiobookCompletionResult> onAudiobookCompleted(
+    Audiobook currentBook,
+  ) async {
+    await markAsRead(currentBook);
+
+    final playlistNext = _nextInPlaylist(currentBook);
+    if (playlistNext != null) {
+      return AudiobookCompletionResult(
+        nextBook: playlistNext,
+        autoAdvance: true,
+      );
+    }
+
+    final relatedNext =
+        _nextInSeries(currentBook) ?? _nextInUniverse(currentBook);
+    if (relatedNext != null) {
+      return AudiobookCompletionResult(
+        nextBook: relatedNext,
+        autoAdvance: false,
+      );
+    }
+
+    return const AudiobookCompletionResult();
+  }
+}
+
+/// Result of finishing an audiobook: optional next book and whether to auto-play.
+class AudiobookCompletionResult {
+  final Audiobook? nextBook;
+
+  /// When true (e.g. active playlist), advance without asking.
+  final bool autoAdvance;
+
+  const AudiobookCompletionResult({
+    this.nextBook,
+    this.autoAdvance = false,
+  });
 }

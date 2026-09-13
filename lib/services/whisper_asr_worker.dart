@@ -12,7 +12,7 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 class WhisperAsrWorker {
   Isolate? _isolate;
   SendPort? _workerPort;
-  final ReceivePort _mainPort = ReceivePort();
+  ReceivePort? _mainPort;
   StreamSubscription? _sub;
   int _nextId = 1;
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
@@ -25,8 +25,9 @@ class WhisperAsrWorker {
 
   Future<void> ensureStarted() async {
     if (_workerPort != null) return;
+    _mainPort = ReceivePort();
     final ready = Completer<SendPort>();
-    _sub = _mainPort.listen((message) {
+    _sub = _mainPort!.listen((message) {
       if (message is SendPort) {
         if (!ready.isCompleted) ready.complete(message);
         return;
@@ -40,7 +41,7 @@ class WhisperAsrWorker {
     });
     _isolate = await Isolate.spawn(
       _whisperAsrWorkerMain,
-      _mainPort.sendPort,
+      _mainPort!.sendPort,
       debugName: 'whisper_asr_worker',
     );
     _workerPort = await ready.future;
@@ -115,7 +116,8 @@ class WhisperAsrWorker {
     _pending.clear();
     await _sub?.cancel();
     _sub = null;
-    _mainPort.close();
+    _mainPort?.close();
+    _mainPort = null;
   }
 
   Future<Map<String, dynamic>> _send(

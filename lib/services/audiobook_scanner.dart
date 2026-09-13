@@ -29,13 +29,25 @@ class DirPathMetadata {
   final String author;
   final String? universe;
   final String? saga;
+  final String? era;
   final String bookTitle;
+  final String? publishYear;
+  final String? narrator;
+  final String? seriesSequence;
+  final String? universeOrder;
+  final List<double> readingOrderKey;
 
   const DirPathMetadata({
     required this.author,
     this.universe,
     this.saga,
+    this.era,
     required this.bookTitle,
+    this.publishYear,
+    this.narrator,
+    this.seriesSequence,
+    this.universeOrder,
+    this.readingOrderKey = const [],
   });
 }
 
@@ -65,25 +77,128 @@ class AudiobookScanner {
   static const List<String> _audioExtensions = ['.m4b', '.m4a', '.mp3'];
   static const List<String> _ebookExtensions = ['.epub', '.pdf'];
 
-  /// Part/disc/era folder under a multiparte book (e.g. CD1, Disc 2, Era 1, Parte II).
+  /// Saga era folder (`Era 1`) — not a disc/CD part of one book.
+  static bool looksLikeEraFolder(String name) {
+    final n = name.trim();
+    return RegExp(
+      r'^(?:eras?|era)\s*[\s._|-]*\s*(?:\d+|[a-zA-Z][a-zA-Z0-9_-]*)$',
+      caseSensitive: false,
+    ).hasMatch(n);
+  }
+
+  /// Disc/CD/part/prologue folders for a single multipart book (excludes eras).
+  static bool looksLikeDiscPartFolder(String name) {
+    final n = name.trim();
+    if (looksLikeEraFolder(n)) return false;
+    if (RegExp(
+      r'^(cd|disc|disk|part|parte|disco|libro|acto|act|vol|volume|tomo|chapter|capitulo|capítulo|section|seccion|sección|ch|cap)[\s._|-]*\d+',
+      caseSensitive: false,
+    ).hasMatch(n)) {
+      return true;
+    }
+    if (RegExp(
+      r'^(cd|disc|disk|part|parte|disco|libro|acto|act|vol|volume|tomo|chapter|capitulo|capítulo|section|seccion|sección)[\s|_-]+[a-zA-Z0-9_-]+$',
+      caseSensitive: false,
+    ).hasMatch(n)) {
+      return true;
+    }
+    if (RegExp(
+      r'^(?:\d{1,3}\s*[-.|:_)\s]+)?(?:part|parte|chapter|capitulo|capítulo|section|seccion|sección)\s+(?:[ivxlcdm]+|\d+)\b',
+      caseSensitive: false,
+    ).hasMatch(n)) {
+      return true;
+    }
+    if (_looksLikePrologueOrEpilogueFolder(n)) return true;
+    if (RegExp(
+      r'^(?:[A-Za-z0-9]{1,4}\s*[-.|:_)\s]+)'
+      r'(?:pr[oó]logo|prologue|ep[ií]logo|epilogue|intro(?:duction)?|proem|preface|foreword)\b',
+      caseSensitive: false,
+    ).hasMatch(n)) {
+      return true;
+    }
+    return RegExp(r'^\d{1,3}$').hasMatch(n);
+  }
+
+  /// Part/disc/era/prologue/epilogue folder under a multiparte book or saga.
   /// Numbered book titles like "01 - The Final Empire" are NOT parts.
   static bool looksLikePartFolder(String name) {
+    return looksLikeEraFolder(name) || looksLikeDiscPartFolder(name);
+  }
+
+  static bool _looksLikePrologueOrEpilogueFolder(String name) {
+    return RegExp(
+      r'^(?:'
+      r'(?:[A-Za-z0-9]{1,4}\s*[-._)\s]+)?'
+      r'(?:pr[oó]logo|prologue|ep[ií]logo|epilogue|intro(?:duction)?|proem|preface|foreword)'
+      r'|'
+      r'(?:pr[oó]logo|prologue|ep[ií]logo|epilogue|intro(?:duction)?|proem|preface|foreword)'
+      r'(?:\s*[-._)\s]*\d{1,3})?'
+      r')$',
+      caseSensitive: false,
+    ).hasMatch(name.trim());
+  }
+
+  /// Sort order of a part folder within a book.
+  ///
+  /// - Prólogo / Prologue → `0` (or the explicit number if present)
+  /// - CD1 / Disc 2 / 01 / Parte III → the extracted number
+  /// - Epílogo / Epilogue → `10000` (+ number if present)
+  /// - Unknown → `null`
+  static int? partOrderFromFolderName(String name) {
     final n = name.trim();
-    if (RegExp(
-      r'^(cd|disc|disk|part|parte|disco|libro|era|eras|acto|act|vol|volume|tomo)[\s._-]*\d+',
+    if (n.isEmpty) return null;
+
+    final isPrologue = RegExp(
+      r'pr[oó]logo|prologue|intro(?:duction)?|proem|preface|foreword',
       caseSensitive: false,
-    ).hasMatch(n)) {
-      return true;
-    }
-    // Suffixes: "Era 1", "Parte 2", "Volumen 3"
-    if (RegExp(
-      r'^(cd|disc|disk|part|parte|disco|libro|era|eras|acto|act|vol|volume|tomo)\s+[a-zA-Z0-9_-]+$',
+    ).hasMatch(n);
+    final isEpilogue =
+        RegExp(r'ep[ií]logo|epilogue', caseSensitive: false).hasMatch(n);
+
+    final partNum = RegExp(
+      r'(?:cd|disc|disk|part|parte|disco|libro|era|eras|acto|act|vol|volume|tomo|chapter|capitulo|capítulo|section|seccion|sección|ch|cap)'
+      r'[\s._|-]*(\d{1,4}|[ivxlcdm]+)\b',
       caseSensitive: false,
-    ).hasMatch(n)) {
-      return true;
+    ).firstMatch(n);
+    int? base;
+    if (partNum != null) {
+      final raw = partNum.group(1)!;
+      base = int.tryParse(raw) ?? _romanToInt(raw);
     }
-    // Bare disc indices only: "1", "01", "12"
-    return RegExp(r'^\d{1,3}$').hasMatch(n);
+    base ??= () {
+      final numMatch = RegExp(r'(\d{1,4})').firstMatch(n);
+      return numMatch != null ? int.tryParse(numMatch.group(1)!) : null;
+    }();
+
+    if (isPrologue) return base ?? 0;
+    if (isEpilogue) return 10000 + (base ?? 0);
+    return base;
+  }
+
+  static int? _romanToInt(String roman) {
+    const values = <String, int>{
+      'i': 1,
+      'v': 5,
+      'x': 10,
+      'l': 50,
+      'c': 100,
+      'd': 500,
+      'm': 1000,
+    };
+    final s = roman.toLowerCase().trim();
+    if (s.isEmpty || !RegExp(r'^[ivxlcdm]+$').hasMatch(s)) return null;
+    var total = 0;
+    var prev = 0;
+    for (var i = s.length - 1; i >= 0; i--) {
+      final v = values[s[i]]!;
+      if (v < prev) {
+        total -= v;
+      } else {
+        total += v;
+        prev = v;
+      }
+    }
+    return total > 0 ? total : null;
   }
 
   static String? _nonEmpty(String? value) {
@@ -123,6 +238,30 @@ class AudiobookScanner {
     }
   }
 
+  /// Audio from multiparte folders, ordered by [partOrderFromFolderName].
+  static Future<List<File>> _listMultipartAudioFiles(
+    String dirPath,
+    List<Directory> subdirs,
+  ) async {
+    final parts = List<Directory>.from(subdirs);
+    parts.sort((a, b) {
+      const unset = 1 << 30;
+      final oa = partOrderFromFolderName(p.basename(a.path)) ?? unset;
+      final ob = partOrderFromFolderName(p.basename(b.path)) ?? unset;
+      final byOrder = oa.compareTo(ob);
+      if (byOrder != 0) return byOrder;
+      return p
+          .basename(a.path)
+          .toLowerCase()
+          .compareTo(p.basename(b.path).toLowerCase());
+    });
+    final files = <File>[];
+    for (final part in parts) {
+      files.addAll(await _listAudioFiles(part.path, recursive: true));
+    }
+    return files;
+  }
+
   /// True when [dir] has no audio of its own, but ≥2 child folders look like
   /// parts/eras/discs and at least one contains audio.
   static Future<bool> _isMultiPartBookDirectory(
@@ -130,7 +269,8 @@ class AudiobookScanner {
     List<Directory> subdirs,
   ) async {
     if (subdirs.length < 2) return false;
-    if (!subdirs.every((d) => looksLikePartFolder(p.basename(d.path)))) {
+    // Eras (Mistborn/Era 1) are saga subdivisions, not disc parts.
+    if (!subdirs.every((d) => looksLikeDiscPartFolder(p.basename(d.path)))) {
       return false;
     }
     for (final sub in subdirs) {
@@ -193,7 +333,10 @@ class AudiobookScanner {
             await universeFile.writeAsString(jsonEncode(data));
           }
         }
-        if (saga != null && currentName.toLowerCase() == saga.toLowerCase()) {
+        if (saga != null &&
+            (currentName.toLowerCase() == saga.toLowerCase() ||
+                stripOrderPrefix(currentName).toLowerCase() ==
+                    saga.toLowerCase())) {
           final sagaFile = File(p.join(current.path, 'saga.metadata.json'));
           if (!await sagaFile.exists()) {
             final data = <String, dynamic>{'name': saga, 'type': 'saga'};
@@ -207,7 +350,10 @@ class AudiobookScanner {
             await seriesFile.writeAsString(jsonEncode(data));
           }
         }
-        if (era != null && currentName.toLowerCase() == era.toLowerCase()) {
+        if (era != null &&
+            (currentName.toLowerCase() == era.toLowerCase() ||
+                stripOrderPrefix(currentName).toLowerCase() ==
+                    era.toLowerCase())) {
           final eraFile = File(p.join(current.path, 'era.metadata.json'));
           if (!await eraFile.exists()) {
             final data = <String, dynamic>{'name': era, 'type': 'era'};
@@ -298,9 +444,59 @@ class AudiobookScanner {
     return result;
   }
 
+  /// Accepts `02 - Title`, `02-Title`, `02_Title`. Dot/colon/paren need a space
+  /// after the separator so `3.14` is not treated as order `3`.
+  static double? orderTokenFromSegment(String name) {
+    final n = name.trim();
+    if (n.isEmpty) return null;
+    if (RegExp(r'^\s*(?:19|20)\d{2}\b').hasMatch(n)) return null;
+    final tight = RegExp(r'^\s*(\d+(?:\.\d+)?)\s*[-_]\s*\S').firstMatch(n);
+    if (tight != null) return double.tryParse(tight.group(1)!);
+    final prefix = RegExp(r'^\s*(\d+(?:\.\d+)?)\s*[._\)|:]\s+\S').firstMatch(n);
+    if (prefix != null) return double.tryParse(prefix.group(1)!);
+    final pipe = RegExp(r'^\s*(\d+(?:\.\d+)?)\s*[|]\s*\S').firstMatch(n);
+    if (pipe != null) return double.tryParse(pipe.group(1)!);
+    final keyword = RegExp(
+      r'(?:era|eras|part|parte|act|acto|vol|volume|tomo|libro|cd|disc|disk|disco)'
+      r'[\s._|-]*(\d+(?:\.\d+)?)\b',
+      caseSensitive: false,
+    ).firstMatch(n);
+    if (keyword != null) return double.tryParse(keyword.group(1)!);
+    return null;
+  }
+
+  static String stripOrderPrefix(String name) {
+    var t = name.trim();
+    t = t.replaceFirst(RegExp(r'^\s*\d+(?:\.\d+)?\s*[-_]\s*'), '');
+    t = t.replaceFirst(RegExp(r'^\s*\d+(?:\.\d+)?\s*[._\)|:]\s+'), '');
+    t = t.replaceFirst(RegExp(r'^\s*\d+(?:\.\d+)?\s*[|]\s*'), '');
+    return t.trim();
+  }
+
+  static String? rawOrderPrefix(String name) {
+    final n = name.trim();
+    if (n.isEmpty) return null;
+    if (RegExp(r'^\s*(?:19|20)\d{2}\b').hasMatch(n)) return null;
+    final m = RegExp(
+      r'^\s*(\d+(?:\.\d+)?)\s*(?:[-_]\s*|[._\)|:]\s+|[|]\s+)',
+    ).firstMatch(n);
+    if (m == null || orderTokenFromSegment(n) == null) return null;
+    return m.group(1);
+  }
+
+  static int compareReadingOrderKeys(List<double> a, List<double> b) {
+    final n = a.length < b.length ? a.length : b.length;
+    for (var i = 0; i < n; i++) {
+      final cmp = a[i].compareTo(b[i]);
+      if (cmp != 0) return cmp;
+    }
+    return a.length.compareTo(b.length);
+  }
+
   /// Parses book [dirPath] relative to scan root for Author/Universe/Saga/Title.
-  /// Intermediate folders without audio are metadata only; [dirPath] must be
-  /// the audiobook directory (has audio, or multiparte parent).
+  ///
+  /// Cosmere example:
+  /// `Author/Universe/02 - Mistborn/Era 1/01 - The Final Empire`
   static DirPathMetadata? parseDirPath(
     String dirPath,
     String baseDirectoryPath, {
@@ -314,11 +510,84 @@ class AudiobookScanner {
     final segments = p.split(relative).where((s) => s.isNotEmpty).toList();
     if (segments.isEmpty) return null;
 
+    String? positionFromTitle(String title) => rawOrderPrefix(title);
+
+    DirPathMetadata build({
+      required String author,
+      String? universe,
+      String? saga,
+      String? era,
+      required String bookTitle,
+      List<String> orderSegments = const [],
+    }) {
+      final year = publishYearFromPath(bookTitle);
+      var clean = year != null
+          ? stripPublishYearFromTitle(bookTitle)
+          : bookTitle;
+      final narrator = narratorFromPath(clean) ?? narratorFromPath(bookTitle);
+      if (narrator != null) {
+        clean = stripNarratorFromTitle(clean);
+      }
+      final pos = positionFromTitle(clean);
+      if (pos != null) {
+        clean = stripOrderPrefix(clean);
+      }
+
+      var cleanSaga = _nonEmpty(saga);
+      String? sagaOrder;
+      if (cleanSaga != null) {
+        final rawOrder = RegExp(r'^\s*(\d+(?:\.\d+)?)')
+            .firstMatch(cleanSaga)
+            ?.group(1);
+        if (rawOrder != null && orderTokenFromSegment(cleanSaga) != null) {
+          sagaOrder = rawOrder;
+        }
+        if (orderTokenFromSegment(cleanSaga) != null) {
+          final stripped = stripOrderPrefix(cleanSaga);
+          if (stripped.isNotEmpty) cleanSaga = stripped;
+        }
+      }
+
+      final key = <double>[];
+      for (final seg in orderSegments) {
+        final token = orderTokenFromSegment(seg);
+        if (token != null) key.add(token);
+      }
+
+      String? universeOrder = sagaOrder;
+      if (universeOrder == null) {
+        for (final seg in orderSegments) {
+          final raw =
+              RegExp(r'^\s*(\d+(?:\.\d+)?)').firstMatch(seg)?.group(1);
+          if (raw != null && orderTokenFromSegment(seg) != null) {
+            universeOrder = raw;
+            break;
+          }
+        }
+      }
+      universeOrder ??= pos;
+
+      return DirPathMetadata(
+        author: author,
+        universe: _nonEmpty(universe),
+        saga: cleanSaga,
+        era: _nonEmpty(era),
+        bookTitle: clean.isEmpty ? bookTitle : clean,
+        publishYear: year,
+        narrator: narrator,
+        seriesSequence: pos,
+        universeOrder: universeOrder,
+        readingOrderKey: key,
+      );
+    }
+
     if (customRule != null && customRule.roles.isNotEmpty) {
       String author = 'Unknown';
       String? universe;
       String? saga;
+      String? era;
       String bookTitle = segments.last;
+      final orderSegs = <String>[];
 
       for (var i = 0; i < segments.length; i++) {
         final role = i < customRule.roles.length
@@ -335,11 +604,15 @@ class AudiobookScanner {
             break;
           case PathSegmentRole.saga:
             saga = val;
+            orderSegs.add(val);
             break;
           case PathSegmentRole.era:
+            era = val;
+            orderSegs.add(val);
             break;
           case PathSegmentRole.bookTitle:
             bookTitle = val;
+            orderSegs.add(val);
             break;
           case PathSegmentRole.part:
           case PathSegmentRole.ignore:
@@ -347,43 +620,149 @@ class AudiobookScanner {
         }
       }
 
-      return DirPathMetadata(
+      return build(
         author: author,
-        universe: _nonEmpty(universe),
-        saga: _nonEmpty(saga),
+        universe: universe,
+        saga: saga,
+        era: era,
         bookTitle: bookTitle,
+        orderSegments: orderSegs,
       );
     }
 
     if (segments.length == 1) {
-      return DirPathMetadata(author: 'Unknown', bookTitle: segments[0]);
+      return build(
+        author: 'Unknown',
+        bookTitle: segments[0],
+        orderSegments: [segments[0]],
+      );
     }
     if (segments.length == 2) {
-      return DirPathMetadata(author: segments[0], bookTitle: segments[1]);
+      return build(
+        author: segments[0],
+        bookTitle: segments[1],
+        orderSegments: [segments[1]],
+      );
     }
     if (segments.length == 3) {
-      return DirPathMetadata(
+      final mid = segments[1];
+      final book = segments[2];
+      if (orderTokenFromSegment(mid) == null &&
+          orderTokenFromSegment(book) != null) {
+        return build(
+          author: segments[0],
+          universe: mid,
+          bookTitle: book,
+          orderSegments: [book],
+        );
+      }
+      return build(
         author: segments[0],
-        saga: segments[1],
-        bookTitle: segments[2],
+        saga: mid,
+        bookTitle: book,
+        orderSegments: [mid, book],
       );
     }
-    if (segments.length == 4) {
-      return DirPathMetadata(
-        author: segments[0],
-        universe: segments[1],
-        saga: segments[2],
-        bookTitle: segments[3],
-      );
+
+    final author = segments[0];
+    final universe = segments[1];
+    final bookTitle = segments.last;
+    final middle = segments.sublist(2, segments.length - 1);
+    final saga = middle.isNotEmpty ? middle.first : segments[2];
+    String? era;
+    if (middle.length >= 2) {
+      final eraSegs = middle.skip(1).where(looksLikeEraFolder).toList();
+      if (eraSegs.isNotEmpty) {
+        era = eraSegs.last;
+      } else if (looksLikePartFolder(middle[1])) {
+        era = middle[1];
+      }
     }
-    // 5+: Author / Universe / Saga / Era / BookTitle (/ ignored extras)
-    final isFourthEra = looksLikePartFolder(segments[3]);
-    return DirPathMetadata(
-      author: segments[0],
-      universe: segments[1],
-      saga: segments[2],
-      bookTitle: isFourthEra ? segments.last : segments[3],
+
+    return build(
+      author: author,
+      universe: universe,
+      saga: saga,
+      era: era,
+      bookTitle: bookTitle,
+      orderSegments: [...middle, bookTitle],
     );
+  }
+
+  /// Extracts a publication year (19xx/20xx) from a path segment or title.
+  ///
+  /// Variants: `[1976]`, `[1990 ]`, `(2014)`, `1973 - Title`,
+  /// `[Jeff Lindsay.2004]`, `[1998 (…`.
+  static String? publishYearFromPath(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return null;
+
+    final bracket = RegExp(r'\[\s*((?:19|20)\d{2})\s*\]').firstMatch(t);
+    if (bracket != null) return bracket.group(1);
+
+    final paren = RegExp(r'\(\s*((?:19|20)\d{2})\s*\)').firstMatch(t);
+    if (paren != null) return paren.group(1);
+
+    final authorYear =
+        RegExp(r'\[\s*[^\]]*?\.((?:19|20)\d{2})\s*\]').firstMatch(t);
+    if (authorYear != null) return authorYear.group(1);
+
+    final unclosed = RegExp(r'\[\s*((?:19|20)\d{2})\s*(?=\()').firstMatch(t);
+    if (unclosed != null) return unclosed.group(1);
+
+    final leading = RegExp(
+      r'^\s*((?:19|20)\d{2})\s*[-–—.:_|]\s+\S',
+    ).firstMatch(t);
+    if (leading != null) return leading.group(1);
+
+    return null;
+  }
+
+  static String stripPublishYearFromTitle(String title) {
+    var t = title.trim();
+    if (t.isEmpty) return t;
+
+    t = t.replaceAll(RegExp(r'\s*\[\s*[^\]]*?\.((?:19|20)\d{2})\s*\]\s*'), ' ');
+    t = t.replaceAll(RegExp(r'\s*\[\s*(?:19|20)\d{2}\s*\]\s*'), ' ');
+    t = t.replaceAll(RegExp(r'\s*\(\s*(?:19|20)\d{2}\s*\)\s*'), ' ');
+    t = t.replaceAll(RegExp(r'\s*\[\s*(?:19|20)\d{2}\s*(?=\()'), ' ');
+    t = t.replaceFirst(RegExp(r'^\s*(?:19|20)\d{2}\s*[-–—.:_|]\s*'), '');
+
+    t = t.replaceAll(RegExp(r'\s{2,}'), ' ');
+    t = t.replaceAll(RegExp(r'\s*-\s*(?=\()'), ' ');
+    t = t.replaceAll(RegExp(r'\s*-\s*$'), '');
+    t = t.replaceAll(RegExp(r'^\s*-\s*'), '');
+    return t.trim();
+  }
+
+  /// Parenthetical narrator markers, e.g. `(read by Bob Askey)`,
+  /// `(VC1 - read by Frank Muller)`, `(B1 - read by George Holmes)`.
+  static final RegExp _narratorParen = RegExp(
+    r'\(\s*(?:[A-Za-z]{1,8}\d{1,3}\s*[-–—:]\s*)?'
+    r'(?:read|narrated|performed|voiced|told)\s+by\s+([^)]+?)\s*\)',
+    caseSensitive: false,
+  );
+
+  static String? narratorFromPath(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return null;
+    final m = _narratorParen.firstMatch(t);
+    if (m == null) return null;
+    final name = m.group(1)?.trim();
+    if (name == null || name.isEmpty) return null;
+    return name;
+  }
+
+  static String stripNarratorFromTitle(String title) {
+    var t = title.trim();
+    if (t.isEmpty) return t;
+
+    t = t.replaceAll(_narratorParen, ' ');
+    t = t.replaceAll(RegExp(r'\s{2,}'), ' ');
+    t = t.replaceAll(RegExp(r'\s*-\s*$'), '');
+    t = t.replaceAll(RegExp(r'^\s*-\s*'), '');
+    t = t.replaceAll(RegExp(r'\s*-\s*$'), '');
+    return t.trim();
   }
 
   static String formatDuration(double seconds) {
@@ -563,10 +942,117 @@ class AudiobookScanner {
     }
   }
 
+  /// MP4/M4B duration from `mvhd` via sync seeks (skips huge `mdat` / `stsz`).
+  static Future<double?> _parseMp4DurationSeconds(
+    File file,
+    int fileSize,
+  ) async {
+    return Future(() => _parseMp4DurationSecondsSync(file, fileSize));
+  }
+
+  static double? _parseMp4DurationSecondsSync(File file, int fileSize) {
+    final raf = file.openSync(mode: FileMode.read);
+    try {
+      Uint8List readAt(int start, int length) {
+        if (length <= 0 || start < 0 || start >= fileSize) {
+          return Uint8List(0);
+        }
+        final n = min(length, fileSize - start);
+        raf.setPositionSync(start);
+        return raf.readSync(n);
+      }
+
+      ({int size, String type, int header})? readHeader(int pos) {
+        if (pos + 8 > fileSize) return null;
+        final hdr = readAt(pos, 8);
+        if (hdr.length < 8) return null;
+        var size = ByteData.sublistView(hdr).getUint32(0);
+        final type = String.fromCharCodes(hdr.sublist(4, 8));
+        var header = 8;
+        if (size == 1) {
+          if (pos + 16 > fileSize) return null;
+          final wide = readAt(pos + 8, 8);
+          if (wide.length < 8) return null;
+          size = ByteData.sublistView(wide).getUint64(0);
+          header = 16;
+        } else if (size == 0) {
+          size = fileSize - pos;
+        }
+        if (size < header) return null;
+        return (size: size, type: type, header: header);
+      }
+
+      double? parseMvhd(int atomPos, int atomSize, int header) {
+        final bodyLen = min(atomSize - header, 32);
+        if (bodyLen < 20) return null;
+        final body = readAt(atomPos + header, bodyLen);
+        if (body.length < 20) return null;
+        final version = body[0];
+        final bd = ByteData.sublistView(body);
+        late final int timescale;
+        late final int duration;
+        if (version == 1) {
+          if (body.length < 32) return null;
+          timescale = bd.getUint32(20);
+          duration = bd.getUint64(24);
+        } else {
+          timescale = bd.getUint32(12);
+          duration = bd.getUint32(16);
+        }
+        if (timescale <= 0 || duration <= 0) return null;
+        return duration / timescale;
+      }
+
+      var pos = 0;
+      var guards = 0;
+      while (pos + 8 <= fileSize && guards++ < 64) {
+        final atom = readHeader(pos);
+        if (atom == null || atom.size <= 0) break;
+        if (atom.type == 'moov') {
+          var child = pos + atom.header;
+          final moovEnd = pos + atom.size;
+          var childGuards = 0;
+          while (child + 8 <= moovEnd && childGuards++ < 64) {
+            final c = readHeader(child);
+            if (c == null || c.size <= 0) break;
+            if (c.type == 'mvhd') {
+              return parseMvhd(child, c.size, c.header);
+            }
+            final nextChild = child + c.size;
+            if (nextChild <= child) break;
+            child = nextChild;
+          }
+          break;
+        }
+        final next = pos + atom.size;
+        if (next <= pos) break;
+        pos = next;
+      }
+      return null;
+    } finally {
+      raf.closeSync();
+    }
+  }
+
   static Future<AudioFileMetadata?> getAudioMetadata(File file) async {
     try {
       final ext = p.extension(file.path).toLowerCase();
       final fileSize = await file.length();
+
+      if (ext == '.m4b' || ext == '.m4a' || ext == '.mp4' || ext == '.aac') {
+        final seconds = await _parseMp4DurationSeconds(file, fileSize);
+        if (seconds != null && seconds > 0) {
+          return AudioFileMetadata(
+            duration: Duration(milliseconds: (seconds * 1000).round()),
+            bitRate: 0,
+            sampleRate: 0,
+            channelCount: 0,
+            type: AudioType.aac,
+          );
+        }
+        return null;
+      }
+
       final bytes = await _readAudioBytesForMetadata(file, fileSize);
       final isPartialRead = fileSize > _largeFileThresholdBytes;
 
@@ -692,8 +1178,9 @@ class AudiobookScanner {
       (k, v) => MapEntry(k, PathPatternRule.fromJson(v as Map<String, dynamic>)),
     );
 
-    // Get top-level directories for progress calculation
-    List<Directory> topLevelDirs = [];
+    try {
+      // Get top-level directories for progress calculation
+      List<Directory> topLevelDirs = [];
     try {
       final baseDir = Directory(directoryPath);
       await for (final entity in baseDir.list(recursive: false)) {
@@ -825,7 +1312,7 @@ class AudiobookScanner {
       // Rule 2: multiparte — no audio here, but children are parts/eras/discs.
       if (await _isMultiPartBookDirectory(currentPath, subdirs)) {
         final audioFiles =
-            await _listAudioFiles(currentPath, recursive: true);
+            await _listMultipartAudioFiles(currentPath, subdirs);
         await emitAudiobook(bookPath: currentPath, audioFiles: audioFiles);
         return;
       }
@@ -857,7 +1344,7 @@ class AudiobookScanner {
         topLevelDirs,
       )) {
         final audioFiles =
-            await _listAudioFiles(directoryPath, recursive: true);
+            await _listMultipartAudioFiles(directoryPath, topLevelDirs);
         await emitAudiobook(bookPath: directoryPath, audioFiles: audioFiles);
         rootIsBook = true;
       }
@@ -878,8 +1365,12 @@ class AudiobookScanner {
       }
     }
 
-    sendPort.send(ScanMessage(progress: 1.0));
-    sendPort.send(null); // Signal completion
+      sendPort.send(ScanMessage(progress: 1.0));
+    } catch (e) {
+      // Prevent isolate from terminating silently without notifying controller
+    } finally {
+      sendPort.send(null); // Signal completion
+    }
   }
 
   /// Loads audiobook metadata from a file. Looks for chapters.json in same directory.
@@ -908,9 +1399,29 @@ class AudiobookScanner {
     String author = hierarchyMeta['author'] ?? dirPathMetadata?.author ?? 'Unknown';
     String? universe = hierarchyMeta['universe'] ?? _nonEmpty(dirPathMetadata?.universe);
     String? saga = hierarchyMeta['saga'] ?? dirPathMetadata?.saga;
-    String? publishYear;
-    String? seriesSequence;
-    String? narrator;
+    String? era = hierarchyMeta['era']?.toString() ?? dirPathMetadata?.era;
+    String? universeOrder = dirPathMetadata?.universeOrder;
+    List<double> readingOrderKey =
+        List<double>.from(dirPathMetadata?.readingOrderKey ?? const []);
+    String? publishYear = dirPathMetadata?.publishYear ??
+        publishYearFromPath(p.basename(dirPath));
+    if (publishYear == null) {
+      publishYear = publishYearFromPath(bookTitle);
+      if (publishYear != null) {
+        bookTitle = stripPublishYearFromTitle(bookTitle);
+      }
+    }
+    String? narrator = dirPathMetadata?.narrator ??
+        narratorFromPath(p.basename(dirPath));
+    if (narrator == null) {
+      narrator = narratorFromPath(bookTitle);
+      if (narrator != null) {
+        bookTitle = stripNarratorFromTitle(bookTitle);
+      }
+    } else if (narratorFromPath(bookTitle) != null) {
+      bookTitle = stripNarratorFromTitle(bookTitle);
+    }
+    String? seriesSequence = dirPathMetadata?.seriesSequence;
     
     // Check path for known authors and sagas if not set by hierarchy metadata
     final relativePath = p.relative(dirPath, from: baseDirectoryPath);
@@ -1081,6 +1592,9 @@ class AudiobookScanner {
       universe: universe,
       series: saga,
       seriesSequence: seriesSequence,
+      universeOrder: universeOrder,
+      era: era,
+      readingOrderKey: readingOrderKey,
       publishYear: publishYear,
       files: audioFiles.map((file) => file.path).toList(),
       durationFormatted: '00:00:00.000', // Postponed calculation

@@ -11,10 +11,12 @@ import '../models/bookmark.dart';
 import '../service_locator.dart';
 import '../services/audio_player_service.dart';
 import '../services/library_storage.dart';
-import '../services/metadata_fetcher.dart';
 import '../utils/structure_detection_flow.dart';
 import '../widgets/structure_detection_banner.dart';
 import 'eq_analyzer_sheet.dart';
+import '../l10n/app_localizations.dart';
+import '../widgets/player/sleep_timer_sheet.dart';
+import '../widgets/player/playback_speed_sheet.dart';
 
 class PlayerScreen extends StatefulWidget {
   final Audiobook audiobook;
@@ -31,6 +33,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _showChapters = false;
   List<Bookmark> _bookmarks = [];
   StreamSubscription? _playerStateSubscription;
+  bool _handlingCompletion = false;
 
   @override
   void initState() {
@@ -40,32 +43,133 @@ class _PlayerScreenState extends State<PlayerScreen> {
     
     _initPlayer();
     _loadBookmarks();
-    
-    // Only query online APIs if the book does not have metadata locally
+
     if (!widget.audiobook.hasMetadataLocally) {
-      MetadataFetcher.enqueue([widget.audiobook]);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _confirmOnlineMetadataFetch();
+      });
     }
 
     final cubit = context.read<HomeCubit>();
     _playerStateSubscription = _playerService.playerStateStream.listen((state) async {
-      if (state.processingState == ProcessingState.completed) {
-        final nextBook = await cubit.onAudiobookCompleted(widget.audiobook);
-        if (!mounted) return;
-        if (nextBook != null) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => BlocProvider.value(
-                value: cubit,
-                child: PlayerScreen(audiobook: nextBook),
-              ),
-            ),
-          );
-        } else {
-          Navigator.pop(context);
-        }
-      }
+      if (state.processingState != ProcessingState.completed) return;
+      if (_handlingCompletion) return;
+      _handlingCompletion = true;
+      await _onAudiobookFinished(cubit);
     });
+  }
+
+  Future<void> _onAudiobookFinished(HomeCubit cubit) async {
+    final result = await cubit.onAudiobookCompleted(widget.audiobook);
+    if (!mounted) return;
+
+    final next = result.nextBook;
+    if (next == null) {
+      Navigator.pop(context);
+      return;
+    }
+
+    var playNext = result.autoAdvance;
+    if (!playNext) {
+      final l10n = AppLocalizations.of(context);
+      final playNextTitle = l10n?.playNextTitle ?? '¿Reproducir el siguiente?';
+      final playNextPrompt = l10n?.playNextPrompt(widget.audiobook.title, next.title) ??
+          'Terminaste «${widget.audiobook.title}». ¿Querés seguir con «${next.title}»?';
+      final backToList = l10n?.backToList ?? 'Volver al listado';
+      final playText = l10n?.play ?? 'Reproducir';
+
+      playNext = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: const Color(0xFF252525),
+              title: Text(
+                playNextTitle,
+                style: const TextStyle(color: Colors.white),
+              ),
+              content: Text(
+                playNextPrompt,
+                style: const TextStyle(color: Colors.white70),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(
+                    backToList,
+                    style: const TextStyle(color: Colors.white54),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: Text(
+                    playText,
+                    style: const TextStyle(color: Color(0xFFE8B86D)),
+                  ),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+    }
+
+    if (!mounted) return;
+    if (playNext) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => BlocProvider.value(
+            value: cubit,
+            child: PlayerScreen(audiobook: next),
+          ),
+        ),
+      );
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
+  Future<void> _confirmOnlineMetadataFetch() async {
+    final proceed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF252525),
+        title: const Text(
+          '¿Buscar metadatos en línea?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          'Es la primera vez que abrís «${widget.audiobook.title}». '
+          '¿Querés buscar portada, descripción y otros datos en internet?',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'No, gracias',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Actualizar',
+              style: TextStyle(color: Color(0xFFE8B86D)),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+
+    final cubit = context.read<HomeCubit>();
+    if (proceed == true) {
+      cubit.enqueueMetadataFetch(widget.audiobook);
+    } else {
+      // Decline: do not ask again on future opens.
+      await cubit.skipOnlineMetadata(widget.audiobook);
+    }
   }
 
   Future<void> _initPlayer() async {
@@ -202,6 +306,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 icon: const Icon(Icons.bookmark_add_outlined),
                 onPressed: _addBookmark,
                 tooltip: 'Add bookmark',
+              ),
+              ValueListenableBuilder<Duration?>(
+                valueListenable: _playerService.sleepTimeRemaining,
+                builder: (context, remaining, _) {
+                  final isActive = _playerService.isSleepTimerActive;
+                  return IconButton(
+                    icon: Icon(
+                      isActive ? Icons.bedtime : Icons.bedtime_outlined,
+                      color: isActive ? const Color(0xFFE8B86D) : Colors.white70,
+                    ),
+                    onPressed: () => SleepTimerSheet.show(context, _playerService),
+                    tooltip: 'Sleep Timer',
+                  );
+                },
+              ),
+              StreamBuilder<double>(
+                stream: _playerService.speedStream,
+                builder: (context, snapshot) {
+                  final speed = snapshot.data ?? _playerService.speed;
+                  return TextButton(
+                    onPressed: () => PlaybackSpeedSheet.show(context, _playerService),
+                    child: Text(
+                      '${speed}x',
+                      style: const TextStyle(
+                        color: Color(0xFFE8B86D),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  );
+                },
               ),
               IconButton(
                 icon: Icon(_showChapters ? Icons.expand_less : Icons.list),

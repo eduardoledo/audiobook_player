@@ -1,0 +1,41 @@
+{
+  "@@locale": "en",
+  "appTitle": "Audiobook Player",
+  "audiobooks": "Audiobooks",
+  "ebooks": "E-Books",
+  "playlists": "Playlists",
+  "googleDrive": "Google Drive",
+  "structuresAndLibrary": "Structures & Library",
+  "scanFolder": "Add folder to scan",
+  "selectFolderTitle": "Select folder to scan for audiobooks",
+  "searchPlaceholder": "Search by title, author, saga...",
+  "emptyLibrary": "No audiobooks found",
+  "emptyLibrarySubtitle": "Tap the button above to add a folder",
+  "scanning": "Scanning library...",
+  "fetchingMetadata": "Fetching metadata...",
+  "playNextTitle": "Play next audiobook?",
+  "playNextPrompt": "You finished \"{currentBook}\". Do you want to continue with \"{nextBook}\"?",
+  "@playNextPrompt": {
+    "placeholders": {
+      "currentBook": { "type": "String" },
+      "nextBook": { "type": "String" }
+    }
+  },
+  "backToList": "Back to library",
+  "play": "Play",
+  "pause": "Pause",
+  "chapters": "Chapters",
+  "bookmarks": "Bookmarks",
+  "speed": "Speed",
+  "sleepTimer": "Sleep Timer",
+  "off": "Off",
+  "endOfChapter": "End of chapter",
+  "sortBy": "Sort by",
+  "sortSeries": "Series / Reading Order",
+  "sortTitle": "Title",
+  "sortAuthor": "Author",
+  "sortRecent": "Recently Added",
+  "filterAll": "All",
+  "filterInProgress": "In Progress",
+  "filterCompleted": "Completed"
+}

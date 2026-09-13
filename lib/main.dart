@@ -5,6 +5,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 
+import 'l10n/app_localizations.dart';
+
 import 'screens/home_screen.dart';
 import 'service_locator.dart';
 
@@ -37,6 +39,8 @@ class AudiobookPlayerApp extends StatelessWidget {
     return MaterialApp(
       title: 'AudioStitch',
       debugShowCheckedModeBanner: false,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,

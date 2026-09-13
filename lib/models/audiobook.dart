@@ -10,6 +10,14 @@ class Audiobook {
   final String? universe;
   final String? series;
   final String? seriesSequence;
+
+  /// Order within the universe (`02` for Mistborn under Cosmere).
+  final String? universeOrder;
+  final String? era;
+
+  /// Hierarchical reading order under the universe/saga
+  /// (e.g. Mistborn Era 1 book 01 → `[2, 1, 1]`).
+  final List<double> readingOrderKey;
   final String? description;
   final String? publishYear;
   final List<String> subjects;
@@ -30,6 +38,9 @@ class Audiobook {
     this.universe,
     this.series,
     this.seriesSequence,
+    this.universeOrder,
+    this.era,
+    this.readingOrderKey = const [],
     this.description,
     this.publishYear,
     this.subjects = const [],
@@ -50,6 +61,18 @@ class Audiobook {
 
     final audio = json['audio'] as Map<String, dynamic>? ?? {};
     final rawUniverse = json['universe'] as String?;
+    final keyRaw = json['readingOrderKey'];
+    final readingOrderKey = <double>[];
+    if (keyRaw is List) {
+      for (final item in keyRaw) {
+        if (item is num) {
+          readingOrderKey.add(item.toDouble());
+        } else {
+          final parsed = double.tryParse(item.toString());
+          if (parsed != null) readingOrderKey.add(parsed);
+        }
+      }
+    }
 
     return Audiobook(
       // id: '${basePath}_${json['files'] ?? ''}',
@@ -60,8 +83,15 @@ class Audiobook {
       universe: rawUniverse != null && rawUniverse.trim().isNotEmpty
           ? rawUniverse.trim()
           : null,
-      series: json['series'] as String? ?? json['album'] as String?,
-      seriesSequence: json['seriesSequence'] as String?,
+      series: json['series'] as String? ??
+          json['seriesName'] as String? ??
+          json['album'] as String?,
+      seriesSequence: json['seriesSequence'] as String? ??
+          json['seriesPosition'] as String?,
+      universeOrder: json['universeOrder'] as String? ??
+          json['universePosition'] as String?,
+      era: json['era'] as String?,
+      readingOrderKey: readingOrderKey,
       description: json['description'] as String?,
       publishYear: json['publishYear'] as String?,
       subjects: (json['subjects'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
@@ -69,7 +99,9 @@ class Audiobook {
       hasMetadataLocally: json['hasMetadataLocally'] as bool? ?? false,
       files: (json['files'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       durationFormatted:
-          audio['durationFormatted'] as String? ?? '00:00:00.000',
+          audio['durationFormatted'] as String? ??
+          json['durationFormatted'] as String? ??
+          '00:00:00.000',
       totalChapters: json['totalChapters'] as int? ?? chapters.length,
       chapters: chapters,
       isRead: json['isRead'] as bool? ?? false,
@@ -83,6 +115,9 @@ class Audiobook {
     String? universe,
     String? series,
     String? seriesSequence,
+    String? universeOrder,
+    String? era,
+    List<double>? readingOrderKey,
     String? description,
     String? publishYear,
     List<String>? subjects,
@@ -102,6 +137,9 @@ class Audiobook {
       universe: universe ?? this.universe,
       series: series ?? this.series,
       seriesSequence: seriesSequence ?? this.seriesSequence,
+      universeOrder: universeOrder ?? this.universeOrder,
+      era: era ?? this.era,
+      readingOrderKey: readingOrderKey ?? this.readingOrderKey,
       description: description ?? this.description,
       publishYear: publishYear ?? this.publishYear,
       subjects: subjects ?? this.subjects,
@@ -126,6 +164,10 @@ class Audiobook {
         'universe': universe,
         'series': series,
         'seriesSequence': seriesSequence,
+        if (universeOrder != null && universeOrder!.isNotEmpty)
+          'universeOrder': universeOrder,
+        if (era != null && era!.isNotEmpty) 'era': era,
+        if (readingOrderKey.isNotEmpty) 'readingOrderKey': readingOrderKey,
         'description': description,
         'publishYear': publishYear,
         'subjects': subjects,

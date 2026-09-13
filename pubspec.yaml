@@ -9,6 +9,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: any
   audio_meta: ^2.0.0
   file_picker: ^11.0.2
   just_audio: ^0.10.5
@@ -50,6 +53,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  generate: true
 
 flutter_icons:
   android: true

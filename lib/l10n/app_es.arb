@@ -1,0 +1,41 @@
+{
+  "@@locale": "es",
+  "appTitle": "Reproductor de Audiolibros",
+  "audiobooks": "Audiolibros",
+  "ebooks": "Libros electrónicos",
+  "playlists": "Listas de reproducción",
+  "googleDrive": "Google Drive",
+  "structuresAndLibrary": "Estructuras y Biblioteca",
+  "scanFolder": "Agregar carpeta para escanear",
+  "selectFolderTitle": "Seleccionar carpeta para escanear audiolibros",
+  "searchPlaceholder": "Buscar por título, autor, saga...",
+  "emptyLibrary": "No se encontraron audiolibros",
+  "emptyLibrarySubtitle": "Toca el botón arriba para agregar una carpeta",
+  "scanning": "Escaneando biblioteca...",
+  "fetchingMetadata": "Obteniendo metadatos...",
+  "playNextTitle": "¿Reproducir el siguiente?",
+  "playNextPrompt": "Terminaste «{currentBook}». ¿Querés seguir con «{nextBook}»?",
+  "@playNextPrompt": {
+    "placeholders": {
+      "currentBook": { "type": "String" },
+      "nextBook": { "type": "String" }
+    }
+  },
+  "backToList": "Volver al listado",
+  "play": "Reproducir",
+  "pause": "Pausar",
+  "chapters": "Capítulos",
+  "bookmarks": "Marcadores",
+  "speed": "Velocidad",
+  "sleepTimer": "Temporizador de apagado",
+  "off": "Desactivado",
+  "endOfChapter": "Fin del capítulo",
+  "sortBy": "Ordenar por",
+  "sortSeries": "Saga / Orden de lectura",
+  "sortTitle": "Título",
+  "sortAuthor": "Autor",
+  "sortRecent": "Recientemente agregado",
+  "filterAll": "Todos",
+  "filterInProgress": "En progreso",
+  "filterCompleted": "Completados"
+}

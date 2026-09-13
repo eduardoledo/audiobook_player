@@ -19,6 +19,9 @@ import 'google_drive_screen.dart';
 import 'ebook_reader_screen.dart';
 import '../utils/structure_detection_flow.dart';
 import '../widgets/structure_detection_banner.dart';
+import '../l10n/app_localizations.dart';
+import '../widgets/home/home_drawer.dart';
+import '../widgets/home/home_search_bar.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -43,29 +46,74 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
   int _currentIndex = 0;
   bool _isFolderView = false;
   bool _autoResumeTriggered = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  LibraryFilter _libraryFilter = LibraryFilter.all;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<Audiobook> _filterAudiobooks(List<Audiobook> books) {
+    var filtered = books;
+    if (_searchQuery.trim().isNotEmpty) {
+      final q = _searchQuery.trim().toLowerCase();
+      filtered = filtered.where((b) {
+        final title = b.title.toLowerCase();
+        final author = b.author.toLowerCase();
+        final series = (b.series ?? '').toLowerCase();
+        final narrator = (b.narrator ?? '').toLowerCase();
+        return title.contains(q) ||
+            author.contains(q) ||
+            series.contains(q) ||
+            narrator.contains(q);
+      }).toList();
+    }
+    if (_libraryFilter == LibraryFilter.completed) {
+      filtered = filtered.where((b) => b.isRead).toList();
+    } else if (_libraryFilter == LibraryFilter.inProgress) {
+      filtered = filtered.where((b) => !b.isRead).toList();
+    }
+    return filtered;
+  }
+
+  List<Ebook> _filterEbooks(List<Ebook> books) {
+    var filtered = books;
+    if (_searchQuery.trim().isNotEmpty) {
+      final q = _searchQuery.trim().toLowerCase();
+      filtered = filtered.where((b) {
+        final title = b.title.toLowerCase();
+        final author = b.author.toLowerCase();
+        return title.contains(q) || author.contains(q);
+      }).toList();
+    }
+    return filtered;
+  }
 
   Future<void> _autoResumeLastBook(List<Audiobook> audiobooks) async {
     if (_autoResumeTriggered || audiobooks.isEmpty) return;
     _autoResumeTriggered = true;
 
     final lastPlayedPath = await getIt<LibraryStorage>().getLastPlayedBook();
-    if (lastPlayedPath != null) {
-      Audiobook? match;
-      for (final b in audiobooks) {
-        if (b.path == lastPlayedPath) {
-          match = b;
-          break;
-        }
-      }
-      if (match != null && mounted) {
-        // Delay slightly to ensure home screen is fully laid out
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted) {
-            _openPlayer(context, match!);
-          }
-        });
+    if (lastPlayedPath == null) return;
+
+    Audiobook? match;
+    for (final b in audiobooks) {
+      if (b.path == lastPlayedPath) {
+        match = b;
+        break;
       }
     }
+    // Finished books stay on the library list; only resume if still in progress.
+    if (match == null || match.isRead || !mounted) return;
+
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        _openPlayer(context, match!);
+      }
+    });
   }
 
   Future<void> _pickDirectory(BuildContext context) async {
@@ -103,157 +151,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
       builder: (context, state) {
         return Scaffold(
           backgroundColor: const Color(0xFF1A1A1A),
-          drawer: Drawer(
-            backgroundColor: const Color(0xFF252525),
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                const DrawerHeader(
-                  decoration: BoxDecoration(color: Color(0xFF1A1A1A)),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.folder_special, size: 48, color: Color(0xFFE8B86D)),
-                      SizedBox(height: 8),
-                      Text(
-                        'Estructuras y Biblioteca',
-                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ),
-                if (state.scanPaths.isNotEmpty) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Carpetas de Biblioteca (${state.scanPaths.length})',
-                        style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.refresh, color: Color(0xFFE8B86D), size: 18),
-                        tooltip: 'Re-escanear biblioteca',
-                        onPressed: state.isScanning ? null : () => context.read<HomeCubit>().rescanAll(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  ...state.scanPaths.map((rootPath) {
-                    final Set<String> allDirectories = {};
-                    
-                    void collectDirectories(String dirPath) {
-                      allDirectories.add(dirPath);
-                      final parent = p.dirname(dirPath);
-                      if (parent != dirPath && parent.startsWith(rootPath) && parent.length >= rootPath.length) {
-                        collectDirectories(parent);
-                      }
-                    }
-
-                    for (final b in state.audiobooks) {
-                      if (b.path.startsWith(rootPath)) {
-                        collectDirectories(b.path);
-                      }
-                    }
-                    for (final eb in state.ebooks) {
-                      final dir = p.dirname(eb.path);
-                      if (dir.startsWith(rootPath)) {
-                        collectDirectories(dir);
-                      }
-                    }
-
-                    final subDirs = allDirectories
-                        .where((d) => d != rootPath)
-                        .toList()
-                      ..sort();
-
-                    return ExpansionTile(
-                      key: PageStorageKey<String>(rootPath),
-                      initiallyExpanded: true,
-                      tilePadding: EdgeInsets.zero,
-                      iconColor: const Color(0xFFE8B86D),
-                      collapsedIconColor: Colors.white60,
-                      leading: const Icon(Icons.folder_special, color: Color(0xFFE8B86D)),
-                      title: Text(
-                        rootPath,
-                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: Text(
-                        'Directorio Raíz (${subDirs.length} subcarpetas)',
-                        style: const TextStyle(color: Colors.white54, fontSize: 11),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.account_tree, color: Color(0xFFE8B86D), size: 20),
-                            tooltip: 'Configurar estructura de la carpeta raíz',
-                            onPressed: () async {
-                              final homeCubit = context.read<HomeCubit>();
-                              final updated = await showDialog<bool>(
-                                context: context,
-                                builder: (_) => PathStructureSelectorDialog(rootPath: rootPath),
-                              );
-                              if (updated == true && context.mounted) {
-                                homeCubit.rescanAll();
-                              }
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close, color: Colors.white54, size: 18),
-                            onPressed: state.isScanning
-                                ? null
-                                : () => context.read<HomeCubit>().removePath(rootPath),
-                          ),
-                        ],
-                      ),
-                      children: subDirs.map((subPath) {
-                        final relativeDepth = p.split(p.relative(subPath, from: rootPath)).length;
-                        final indent = (relativeDepth - 1) * 12.0;
-
-                        return Padding(
-                          padding: EdgeInsets.only(left: 12.0 + indent, bottom: 4.0),
-                          child: Card(
-                            color: const Color(0xFF2A2A2A),
-                            margin: const EdgeInsets.only(bottom: 4),
-                            child: ListTile(
-                              dense: true,
-                              leading: const Icon(Icons.folder, color: Color(0xFFE8B86D), size: 18),
-                              title: Text(
-                                subPath,
-                                style: const TextStyle(color: Colors.white, fontSize: 12),
-                              ),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.account_tree, color: Color(0xFFE8B86D), size: 18),
-                                tooltip: 'Configurar roles de esta subcarpeta',
-                                onPressed: () async {
-                                  final homeCubit = context.read<HomeCubit>();
-                                  final updated = await showDialog<bool>(
-                                    context: context,
-                                    builder: (_) => PathStructureSelectorDialog(rootPath: subPath),
-                                  );
-                                  if (updated == true && context.mounted) {
-                                    homeCubit.rescanAll();
-                                  }
-                                },
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    );
-                  }),
-                ] else ...[
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Text(
-                      'No hay carpetas de biblioteca agregadas aún.',
-                      style: TextStyle(color: Colors.white54, fontSize: 12),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
+          drawer: HomeDrawer(state: state),
           appBar: AppBar(
             title: const Text(
               'AudioStitch',
@@ -310,18 +208,18 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
             unselectedItemColor: Colors.white54,
             currentIndex: _currentIndex,
             onTap: (index) => setState(() => _currentIndex = index),
-            items: const [
+            items: [
               BottomNavigationBarItem(
-                icon: Icon(Icons.headphones),
-                label: 'Audiobooks',
+                icon: const Icon(Icons.headphones),
+                label: AppLocalizations.of(context)?.audiobooks ?? 'Audiobooks',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.menu_book),
-                label: 'Ebooks',
+                icon: const Icon(Icons.menu_book),
+                label: AppLocalizations.of(context)?.ebooks ?? 'Ebooks',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.playlist_play),
-                label: 'Playlists',
+                icon: const Icon(Icons.playlist_play),
+                label: AppLocalizations.of(context)?.playlists ?? 'Playlists',
               ),
             ],
           ),
@@ -350,10 +248,19 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
   }
 
   Widget _buildLibraryTab(BuildContext context, HomeState state) {
+    final filteredAudiobooks = _filterAudiobooks(state.audiobooks);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildAddFolderSection(context, state),
+        if (state.audiobooks.isNotEmpty)
+          HomeSearchBar(
+            controller: _searchController,
+            onQueryChanged: (q) => setState(() => _searchQuery = q),
+            currentFilter: _libraryFilter,
+            onFilterChanged: (f) => setState(() => _libraryFilter = f),
+          ),
         if (state.isScanning) _buildScanningProgress(context, state),
         if (state.fetchingMetadata.isNotEmpty)
           _buildMetadataProgress(context, state),
@@ -362,29 +269,71 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
           child:
               state.audiobooks.isEmpty && !state.isLoading && !state.isScanning
               ? _buildEmptyState()
-              : (_isFolderView
-                    ? _buildDirectoryView(context, state, state.audiobooks)
-                    : _buildAudiobookList(context, state)),
+              : (filteredAudiobooks.isEmpty
+                    ? _buildEmptyFilteredState()
+                    : (_isFolderView
+                          ? _buildDirectoryView(context, state, filteredAudiobooks)
+                          : _buildAudiobookList(context, state, filteredAudiobooks))),
         ),
       ],
     );
   }
 
   Widget _buildEbookLibraryTab(BuildContext context, HomeState state) {
+    final filteredEbooks = _filterEbooks(state.ebooks);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildAddFolderSection(context, state),
+        if (state.ebooks.isNotEmpty)
+          HomeSearchBar(
+            controller: _searchController,
+            onQueryChanged: (q) => setState(() => _searchQuery = q),
+            currentFilter: _libraryFilter,
+            onFilterChanged: (f) => setState(() => _libraryFilter = f),
+          ),
         if (state.isScanning) _buildScanningProgress(context, state),
         if (state.error != null) _buildErrorBanner(state.error!),
         Expanded(
           child: state.ebooks.isEmpty && !state.isLoading && !state.isScanning
               ? _buildEmptyStateEbooks()
-              : (_isFolderView
-                    ? _buildDirectoryView(context, state, state.ebooks)
-                    : _buildEbookList(context, state)),
+              : (filteredEbooks.isEmpty
+                    ? _buildEmptyFilteredState()
+                    : (_isFolderView
+                          ? _buildDirectoryView(context, state, filteredEbooks)
+                          : _buildEbookList(context, state, filteredEbooks))),
         ),
       ],
+    );
+  }
+
+  Widget _buildEmptyFilteredState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.search_off, size: 64, color: Colors.white24),
+            const SizedBox(height: 16),
+            const Text(
+              'No results found',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Try changing your search terms or filter.',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -493,6 +442,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
   }
 
   Widget _buildEmptyState() {
+    final l10n = AppLocalizations.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -506,7 +456,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
             ),
             const SizedBox(height: 24),
             Text(
-              'No audiobooks yet',
+              l10n?.emptyLibrary ?? 'No audiobooks found',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.7),
                 fontSize: 18,
@@ -515,7 +465,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Tap "Add folder to scan" to select a directory\ncontaining audiobooks (.m4b)',
+              l10n?.emptyLibrarySubtitle ?? 'Tap "Add folder to scan" to select a directory\ncontaining audiobooks (.m4b)',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.5),
@@ -670,10 +620,11 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
     return matchesA.length.compareTo(matchesB.length);
   }
 
-  Widget _buildAudiobookList(BuildContext context, HomeState state) {
-    if (state.audiobooks.isEmpty) return const SizedBox.shrink();
+  Widget _buildAudiobookList(BuildContext context, HomeState state, [List<Audiobook>? booksToDisplay]) {
+    final books = booksToDisplay ?? state.audiobooks;
+    if (books.isEmpty) return const SizedBox.shrink();
 
-    final grouped = _groupAudiobooks(state.audiobooks);
+    final grouped = _groupAudiobooks(books);
     final authors = grouped.keys.toList()..sort(_naturalCompare);
 
     return Column(
@@ -714,51 +665,41 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                   children: universeKeys.map((universe) {
                     final seriesMap = universeMap[universe]!;
                     final seriesKeys = seriesMap.keys.toList()
-                      ..sort((a, b) => _naturalCompare(a ?? '', b ?? ''));
+                      ..sort((a, b) {
+                        double? seriesOrder(String? series) {
+                          final books = seriesMap[series]!;
+                          double? best;
+                          for (final book in books) {
+                            if (book.readingOrderKey.isEmpty) continue;
+                            final head = book.readingOrderKey.first;
+                            if (best == null || head < best) best = head;
+                          }
+                          if (best != null) return best;
+                          for (final book in books) {
+                            final seq =
+                                double.tryParse(book.seriesSequence ?? '');
+                            if (seq == null) continue;
+                            if (best == null || seq < best) best = seq;
+                          }
+                          return best;
+                        }
+
+                        final oa = seriesOrder(a);
+                        final ob = seriesOrder(b);
+                        if (oa != null && ob != null) {
+                          final cmp = oa.compareTo(ob);
+                          if (cmp != 0) return cmp;
+                        } else if (oa != null) {
+                          return -1;
+                        } else if (ob != null) {
+                          return 1;
+                        }
+                        return _naturalCompare(a ?? '', b ?? '');
+                      });
 
                     final seriesChildren = seriesKeys.map((series) {
                       final books = seriesMap[series]!;
-                      books.sort((a, b) {
-                        if (a.seriesSequence != null &&
-                            b.seriesSequence != null) {
-                          final numA = double.tryParse(a.seriesSequence!);
-                          final numB = double.tryParse(b.seriesSequence!);
-                          if (numA != null && numB != null) {
-                            final cmp = numA.compareTo(numB);
-                            if (cmp != 0) return cmp;
-                          } else {
-                            final cmp = _naturalCompare(
-                              a.seriesSequence!,
-                              b.seriesSequence!,
-                            );
-                            if (cmp != 0) return cmp;
-                          }
-                        } else if (a.seriesSequence != null) {
-                          return -1;
-                        } else if (b.seriesSequence != null) {
-                          return 1;
-                        }
-
-                        if (a.publishYear != null && b.publishYear != null) {
-                          final numA = int.tryParse(a.publishYear!);
-                          final numB = int.tryParse(b.publishYear!);
-                          if (numA != null && numB != null) {
-                            final cmp = numA.compareTo(numB);
-                            if (cmp != 0) return cmp;
-                          } else {
-                            final cmp = a.publishYear!.compareTo(
-                              b.publishYear!,
-                            );
-                            if (cmp != 0) return cmp;
-                          }
-                        } else if (a.publishYear != null) {
-                          return -1;
-                        } else if (b.publishYear != null) {
-                          return 1;
-                        }
-
-                        return _naturalCompare(a.title, b.title);
-                      });
+                      books.sort(HomeCubit.compareLibraryOrder);
 
                       if (series != null) {
                         return Theme(
@@ -774,7 +715,16 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                             iconColor: Colors.white70,
                             collapsedIconColor: Colors.white54,
                             title: Text(
-                              series,
+                              () {
+                                final order = books
+                                    .map((b) => b.universeOrder)
+                                    .whereType<String>()
+                                    .where((o) => o.isNotEmpty)
+                                    .firstOrNull;
+                                return order != null
+                                    ? '$order - $series'
+                                    : series;
+                              }(),
                               style: const TextStyle(
                                 color: Colors.white70,
                                 fontWeight: FontWeight.w600,
@@ -784,9 +734,11 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                             children: books.map((book) {
                               final prefix = book.seriesSequence != null
                                   ? 'Book ${book.seriesSequence} - '
-                                  : (book.publishYear != null
-                                        ? '${book.publishYear} - '
-                                        : '');
+                                  : (book.universeOrder != null
+                                        ? '${book.universeOrder} - '
+                                        : (book.publishYear != null
+                                              ? '${book.publishYear} - '
+                                              : ''));
                               return _buildAudiobookTile(
                                 context,
                                 state,
@@ -801,8 +753,14 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: books
                               .map(
-                                (book) =>
-                                    _buildAudiobookTile(context, state, book),
+                                (book) => _buildAudiobookTile(
+                                  context,
+                                  state,
+                                  book,
+                                  prefix: book.universeOrder != null
+                                      ? '${book.universeOrder} - '
+                                      : '',
+                                ),
                               )
                               .toList(),
                         );
@@ -1112,11 +1070,12 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
     );
   }
 
-  Widget _buildEbookList(BuildContext context, HomeState state) {
-    if (state.ebooks.isEmpty) return const SizedBox.shrink();
+  Widget _buildEbookList(BuildContext context, HomeState state, [List<Ebook>? ebooksToDisplay]) {
+    final ebooks = ebooksToDisplay ?? state.ebooks;
+    if (ebooks.isEmpty) return const SizedBox.shrink();
 
     final Map<String, Map<String?, Map<String?, List<dynamic>>>> grouped = {};
-    for (var book in state.ebooks) {
+    for (var book in ebooks) {
       grouped.putIfAbsent(book.author, () => {});
       grouped[book.author]!.putIfAbsent(book.universe, () => {});
       grouped[book.author]![book.universe]!.putIfAbsent(book.series, () => []);
@@ -1775,23 +1734,25 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
 
   void _sortDirectoryTree(_DirectoryNode node) {
     node.books.sort((a, b) {
+      if (a is Audiobook && b is Audiobook) {
+        return HomeCubit.compareLibraryOrder(a, b);
+      }
       final titleA = (a as dynamic).title as String? ?? '';
       final titleB = (b as dynamic).title as String? ?? '';
       final seqA = (a as dynamic).seriesSequence as String?;
       final seqB = (b as dynamic).seriesSequence as String?;
-      if (seqA != null && seqB != null) {
-        final numA = double.tryParse(seqA);
-        final numB = double.tryParse(seqB);
-        if (numA != null && numB != null) {
-          final cmp = numA.compareTo(numB);
-          if (cmp != 0) return cmp;
-        } else {
-          final cmp = _naturalCompare(seqA, seqB);
-          if (cmp != 0) return cmp;
-        }
-      } else if (seqA != null) {
+      final orderA = seqA != null
+          ? double.tryParse(seqA)
+          : AudiobookScanner.orderTokenFromSegment(titleA);
+      final orderB = seqB != null
+          ? double.tryParse(seqB)
+          : AudiobookScanner.orderTokenFromSegment(titleB);
+      if (orderA != null && orderB != null) {
+        final cmp = orderA.compareTo(orderB);
+        if (cmp != 0) return cmp;
+      } else if (orderA != null) {
         return -1;
-      } else if (seqB != null) {
+      } else if (orderB != null) {
         return 1;
       }
       return _naturalCompare(titleA, titleB);
@@ -1808,25 +1769,57 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
     _DirectoryNode node,
     int depth,
   ) {
-    final subDirs = node.subdirectories.values.toList()
-      ..sort((a, b) => _naturalCompare(a.name, b.name));
+    // Interleave numbered books and saga folders by reading-order token so a
+    // Cosmere-style mix (01 Elantris, 02 Mistborn/…, 03 Warbreaker) stays ordered.
+    final entries = <({double? order, String label, Object item})>[];
+    for (final sub in node.subdirectories.values) {
+      entries.add((
+        order: AudiobookScanner.orderTokenFromSegment(sub.name),
+        label: sub.name,
+        item: sub,
+      ));
+    }
+    for (final book in node.books) {
+      String label;
+      double? order;
+      if (book is Audiobook) {
+        label = book.title;
+        order = book.readingOrderKey.isNotEmpty
+            ? book.readingOrderKey.first
+            : double.tryParse(book.seriesSequence ?? '');
+        order ??= AudiobookScanner.orderTokenFromSegment(p.basename(book.path));
+      } else {
+        label = (book as dynamic).title as String? ?? '';
+        order = double.tryParse(
+          ((book as dynamic).seriesSequence as String?) ?? '',
+        );
+      }
+      entries.add((order: order, label: label, item: book));
+    }
+    entries.sort((a, b) {
+      if (a.order != null && b.order != null) {
+        final cmp = a.order!.compareTo(b.order!);
+        if (cmp != 0) return cmp;
+      } else if (a.order != null) {
+        return -1;
+      } else if (b.order != null) {
+        return 1;
+      }
+      return _naturalCompare(a.label, b.label);
+    });
 
     final childrenWidgets = <Widget>[];
-
-    for (final sub in subDirs) {
-      childrenWidgets.add(
-        _buildDirectoryNodeWidget(context, state, sub, depth + 1),
-      );
-    }
-
-    for (final book in node.books) {
-      if (book is Audiobook) {
+    for (final entry in entries) {
+      final item = entry.item;
+      if (item is _DirectoryNode) {
         childrenWidgets.add(
-          _buildAudiobookTile(context, state, book),
+          _buildDirectoryNodeWidget(context, state, item, depth + 1),
         );
+      } else if (item is Audiobook) {
+        childrenWidgets.add(_buildAudiobookTile(context, state, item));
       } else {
         childrenWidgets.add(
-          _buildEbookTile(context, state, book),
+          _buildEbookTile(context, state, item as dynamic),
         );
       }
     }

@@ -1,0 +1,23 @@
+name: metadata_cli
+description: Console tool to scan audiobook libraries and create/update book.metadata.json
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ^3.10.4
+
+executables:
+  metadata_cli:
+
+dependencies:
+  args: ^2.7.0
+  path: ^1.9.1
+  http: ^1.6.0
+  audio_meta: ^2.0.0
+  archive: ^4.0.9
+  xml: ^7.0.1
+  sherpa_onnx: ^1.13.4
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.0

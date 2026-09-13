@@ -7,6 +7,17 @@ import '../models/ebook.dart';
 
 class EbookReader {
   static void open(BuildContext context, Ebook ebook) {
+    final file = File(ebook.file);
+    if (!file.existsSync()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ebook file not found on disk'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
     if (ebook.isEpub) {
       Navigator.push(
         context,

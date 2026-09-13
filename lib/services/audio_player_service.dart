@@ -55,10 +55,14 @@ class AudioPlayerService {
       }
     });
 
-    // Guardar progreso al cambiar de capítulo
+    // Guardar progreso al cambiar de capítulo y verificar temporizador
     _player.currentIndexStream.listen((index) {
       if (index != null) {
         _saveProgress();
+        if (_sleepAtChapterEnd) {
+          cancelSleepTimer();
+          unawaited(pause());
+        }
       }
     });
   }
@@ -94,10 +98,14 @@ class AudioPlayerService {
   }
 
   bool _isSavingProgress = false;
+  bool _suppressProgressSave = false;
+  /// When true, the next [play] from a paused position rewinds by [resumeRewind].
+  /// Cleared after a resume seek in [setAudiobook] so open+play does not double-rewind.
+  bool _rewindOnNextPlay = true;
 
   Future<void> _saveProgress() async {
     if (currentAudiobook == null) return;
-    if (_isSavingProgress) return;
+    if (_isSavingProgress || _suppressProgressSave) return;
     
     try {
       _isSavingProgress = true;
@@ -114,7 +122,7 @@ class AudioPlayerService {
   AudioPlayer get player => _player;
 
   /// How far to rewind when resuming from a saved or paused position.
-  static const Duration resumeRewind = Duration(milliseconds: 500);
+  static const Duration resumeRewind = Duration(seconds: 1);
 
   /// Returns [saved] minus [resumeRewind], floored at zero.
   static Duration positionForResume(Duration saved) {
@@ -170,14 +178,23 @@ class AudioPlayerService {
     final startPosition =
         rewindForResume ? positionForResume(position) : position;
 
-    await _player.setAudioSources(
-      playlist,
-      initialIndex: chapterIndex,
-      initialPosition: startPosition,
-    );
-    // Some backends ignore initialPosition; seek explicitly after load.
-    if (startPosition > Duration.zero) {
-      await _player.seek(startPosition, index: chapterIndex);
+    // Already applied resume rewind on load; avoid a second rewind on first play.
+    _rewindOnNextPlay = !rewindForResume;
+
+    // Avoid persisting the rewound position as progress before the user plays.
+    _suppressProgressSave = true;
+    try {
+      await _player.setAudioSources(
+        playlist,
+        initialIndex: chapterIndex,
+        initialPosition: startPosition,
+      );
+      // Some backends ignore initialPosition; seek explicitly after load.
+      if (startPosition > Duration.zero) {
+        await _player.seek(startPosition, index: chapterIndex);
+      }
+    } finally {
+      _suppressProgressSave = false;
     }
   }
 
@@ -239,15 +256,76 @@ class AudioPlayerService {
   }
 
   Future<void> play() async {
-    if (!_player.playing && _player.position > Duration.zero) {
-      await _player.seek(positionForResume(_player.position));
+    if (!_player.playing &&
+        _player.position > Duration.zero &&
+        _rewindOnNextPlay) {
+      _suppressProgressSave = true;
+      try {
+        await _player.seek(positionForResume(_player.position));
+      } finally {
+        _suppressProgressSave = false;
+      }
     }
+    // After this play, the next pause→play should rewind again.
+    _rewindOnNextPlay = true;
     await _player.play();
   }
   Future<void> pause() => _player.pause();
   Future<void> stop() => _player.stop();
 
   Future<void> setSpeed(double speed) => _player.setSpeed(speed);
+  double get speed => _player.speed;
+  Stream<double> get speedStream => _player.speedStream;
+
+  Timer? _sleepTimer;
+  DateTime? _sleepTimerEndTime;
+  final ValueNotifier<Duration?> sleepTimeRemaining = ValueNotifier(null);
+  bool _sleepAtChapterEnd = false;
+
+  bool get isSleepTimerActive => _sleepTimer != null || _sleepAtChapterEnd;
+  bool get sleepAtChapterEnd => _sleepAtChapterEnd;
+
+  void setSleepTimer(Duration duration) {
+    cancelSleepTimer();
+    _sleepTimerEndTime = DateTime.now().add(duration);
+    sleepTimeRemaining.value = duration;
+
+    _sleepTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      final remaining = _sleepTimerEndTime?.difference(DateTime.now()) ?? Duration.zero;
+      if (remaining <= Duration.zero) {
+        cancelSleepTimer();
+        await _fadeAndPause();
+      } else {
+        sleepTimeRemaining.value = remaining;
+      }
+    });
+  }
+
+  void setSleepAtChapterEnd() {
+    cancelSleepTimer();
+    _sleepAtChapterEnd = true;
+    sleepTimeRemaining.value = null;
+  }
+
+  void cancelSleepTimer() {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    _sleepTimerEndTime = null;
+    _sleepAtChapterEnd = false;
+    sleepTimeRemaining.value = null;
+  }
+
+  Future<void> _fadeAndPause() async {
+    if (_player.playing) {
+      final currentVol = _player.volume;
+      for (int i = 10; i >= 0; i--) {
+        await Future.delayed(const Duration(milliseconds: 150));
+        await _player.setVolume(currentVol * (i / 10.0));
+      }
+      await pause();
+      await _player.setVolume(currentVol);
+    }
+  }
 
   int? getCurrentChapterIndex(Audiobook audiobook) {
     return _player.currentIndex;

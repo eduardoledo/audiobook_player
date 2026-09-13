@@ -121,14 +121,23 @@ class GoogleDriveService {
     final sink = file.openWrite();
     int downloaded = 0;
     
-    await for (final chunk in downloadMedia.stream) {
-      sink.add(chunk);
-      downloaded += chunk.length;
-      if (totalSize > 0 && onProgress != null) {
-        onProgress(downloaded / totalSize);
+    try {
+      await for (final chunk in downloadMedia.stream) {
+        sink.add(chunk);
+        downloaded += chunk.length;
+        if (totalSize > 0 && onProgress != null) {
+          onProgress(downloaded / totalSize);
+        }
       }
+      await sink.flush();
+      await sink.close();
+    } catch (e) {
+      await sink.close();
+      if (await file.exists()) {
+        await file.delete();
+      }
+      rethrow;
     }
-    await sink.close();
     
     return file;
   }

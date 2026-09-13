@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+import '../models/book_playback_state.dart';
 import '../models/audiobook.dart';
 import '../models/ebook.dart';
 import '../models/bookmark.dart';
@@ -92,7 +93,7 @@ class LibraryStorage {
     
     _db = await openDatabase(
       path,
-      version: 9,
+      version: 10,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE scan_paths (
@@ -165,8 +166,30 @@ class LibraryStorage {
             name TEXT PRIMARY KEY
           )
         ''');
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS book_playback_state (
+            book_path TEXT PRIMARY KEY,
+            position_ms INTEGER,
+            chapter_index INTEGER,
+            playback_speed REAL,
+            volume_gain REAL,
+            last_played_timestamp INTEGER
+          )
+        ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 10) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS book_playback_state (
+              book_path TEXT PRIMARY KEY,
+              position_ms INTEGER,
+              chapter_index INTEGER,
+              playback_speed REAL,
+              volume_gain REAL,
+              last_played_timestamp INTEGER
+            )
+          ''');
+        }
         if (oldVersion < 2) {
           await db.execute('''
             CREATE TABLE playback_progress (
@@ -710,5 +733,27 @@ class LibraryStorage {
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  Future<void> saveBookPlaybackState(BookPlaybackState state) async {
+    final db = await database;
+    await db.insert(
+      'book_playback_state',
+      state.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<BookPlaybackState> getBookPlaybackState(String bookPath) async {
+    final db = await database;
+    final maps = await db.query(
+      'book_playback_state',
+      where: 'book_path = ?',
+      whereArgs: [bookPath],
+    );
+    if (maps.isNotEmpty) {
+      return BookPlaybackState.fromMap(maps.first, bookPath);
+    }
+    return BookPlaybackState(bookPath: bookPath);
   }
 }

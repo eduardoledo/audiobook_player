@@ -39,8 +39,26 @@ void main() {
       expect(metadata, isNotNull);
       expect(metadata!.author, 'Brandon Sanderson');
       expect(metadata.universe, 'Cosmere');
-      expect(metadata.saga, '02 - Mistborn');
-      expect(metadata.bookTitle, '01 - The Final Empire');
+      expect(metadata.saga, 'Mistborn');
+      expect(metadata.era, 'Era 1');
+      expect(metadata.bookTitle, 'The Final Empire');
+      expect(metadata.seriesSequence, '01');
+      expect(metadata.universeOrder, '02');
+      expect(metadata.readingOrderKey, [2.0, 1.0, 1.0]);
+    });
+
+    test('tight hyphen book prefixes (01-Title)', () {
+      final base = '/lib';
+      final path = '$base/Eoin Colfer/Artemis Fowl/02-The Arctic Incident';
+      final metadata = AudiobookScanner.parseDirPath(path, base);
+
+      expect(metadata!.author, 'Eoin Colfer');
+      expect(metadata.universe, 'Artemis Fowl');
+      expect(metadata.bookTitle, 'The Arctic Incident');
+      expect(metadata.seriesSequence, '02');
+      expect(AudiobookScanner.orderTokenFromSegment('02-The Arctic Incident'), 2.0);
+      expect(AudiobookScanner.stripOrderPrefix('08-The Last Guardian'),
+          'The Last Guardian');
     });
   });
 
@@ -51,6 +69,24 @@ void main() {
       expect(AudiobookScanner.looksLikePartFolder('Part 3'), isTrue);
       expect(AudiobookScanner.looksLikePartFolder('Era 1'), isTrue);
       expect(AudiobookScanner.looksLikePartFolder('01'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Chapter 1'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Capítulo 02'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Section 3'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Sección 4'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Ch. 5'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Cap. 6'), isTrue);
+    });
+
+    test('recognizes prologue and epilogue folders', () {
+      expect(AudiobookScanner.looksLikePartFolder('Prólogo'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Prologo'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Prologue'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Epílogo'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Epilogo'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Epilogue'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('01 - Prólogo'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Epílogo 1'), isTrue);
+      expect(AudiobookScanner.looksLikePartFolder('Prologue 2'), isTrue);
     });
 
     test('does not treat numbered book titles as parts', () {
@@ -59,6 +95,27 @@ void main() {
         isFalse,
       );
       expect(AudiobookScanner.looksLikePartFolder('Mistborn'), isFalse);
+      expect(
+        AudiobookScanner.looksLikePartFolder('Prologue to a Murder'),
+        isFalse,
+      );
+    });
+
+    test('detects reading order within the book', () {
+      expect(AudiobookScanner.partOrderFromFolderName('Prólogo'), 0);
+      expect(AudiobookScanner.partOrderFromFolderName('Prologue'), 0);
+      expect(AudiobookScanner.partOrderFromFolderName('01 - Prólogo'), 1);
+      expect(AudiobookScanner.partOrderFromFolderName('CD1'), 1);
+      expect(AudiobookScanner.partOrderFromFolderName('Disc 2'), 2);
+      expect(AudiobookScanner.partOrderFromFolderName('01'), 1);
+      expect(AudiobookScanner.partOrderFromFolderName('Parte III'), 3);
+      expect(AudiobookScanner.partOrderFromFolderName('Era 1'), 1);
+      expect(AudiobookScanner.partOrderFromFolderName('Epílogo'), 10000);
+      expect(AudiobookScanner.partOrderFromFolderName('Chapter 1'), 1);
+      expect(AudiobookScanner.partOrderFromFolderName('Capítulo 02'), 2);
+      expect(AudiobookScanner.partOrderFromFolderName('Section 3'), 3);
+      expect(AudiobookScanner.partOrderFromFolderName('Ch. 4'), 4);
+      expect(AudiobookScanner.partOrderFromFolderName('Mistborn'), isNull);
     });
   });
 
