@@ -119,3 +119,6 @@ Upon completing a ticket implementation, obtaining user approval, and executing 
 
 ### Clickable File Links in Reports Rule
 Whenever displaying ticket lists, file paths, or reports, every ticket title/path must be rendered as an explicit clickable markdown file link using the `file:///` URI scheme (e.g. `[04-multi-root-library.md](file:///home/eduardo/Development/audiobook_player/.scratch/smart-audiobook-player-parity/issues/04-multi-root-library-and-cover-art-resolver.md)`) so the user can click directly on the file to view its full contents in the IDE.
+
+### Plain Text Absolute File Paths Rule
+Whenever presenting lists of tickets, always provide the exact absolute file path in plain code format (e.g. `.scratch/smart-audiobook-player-parity/issues/04-multi-root-library-and-cover-art-resolver.md`) in addition to markdown links, so the user can easily select or click it to complete the path in their command input.
