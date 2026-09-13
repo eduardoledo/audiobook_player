@@ -5,13 +5,13 @@ class SmartSleepTimerService {
   Timer? _timer;
   Duration _initialDuration = Duration.zero;
   Duration _remainingTime = Duration.zero;
-  Function()? _onExpired;
+  void Function()? _onExpired;
   bool _isListeningToMotion = false;
 
   bool get isListeningToMotion => _isListeningToMotion;
   Duration get remainingTime => _remainingTime;
 
-  void start({required Duration duration, required Function() onExpired}) {
+  void start({required Duration duration, required void Function() onExpired}) {
     cancel();
     _initialDuration = duration;
     _remainingTime = duration;

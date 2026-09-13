@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:path/path.dart' as p;
@@ -108,7 +109,7 @@ class HomeDrawer extends StatelessWidget {
                           builder: (_) => PathStructureSelectorDialog(rootPath: rootPath),
                         );
                         if (updated == true && context.mounted) {
-                          homeCubit.rescanAll();
+                          unawaited(homeCubit.rescanAll());
                         }
                       },
                     ),
@@ -146,7 +147,7 @@ class HomeDrawer extends StatelessWidget {
                               builder: (_) => PathStructureSelectorDialog(rootPath: subPath),
                             );
                             if (updated == true && context.mounted) {
-                              homeCubit.rescanAll();
+                              unawaited(homeCubit.rescanAll());
                             }
                           },
                         ),

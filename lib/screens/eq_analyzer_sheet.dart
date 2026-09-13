@@ -673,7 +673,7 @@ class _EqAnalyzerSheetState extends State<EqAnalyzerSheet>
               final gain = _bandGains[index];
               final freq = band.centerFrequency;
 
-              String freqLabel = freq < 1000
+              final String freqLabel = freq < 1000
                   ? '${freq.round()}Hz'
                   : '${(freq / 1000).toStringAsFixed(1)}kHz';
 

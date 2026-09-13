@@ -141,7 +141,7 @@ class MetadataFetcher {
         // If no duration locally, or we don't have chapters matching the files count
         if ((durationStr == '00:00:00.000' || !hasDurationLocally || localJson['chapters'] == null) && book.files.isNotEmpty) {
            double cumulativeStart = 0.0;
-           List<Chapter> calculatedChapters = [];
+           final List<Chapter> calculatedChapters = [];
            
            for (int i = 0; i < book.files.length; i++) {
              final path = book.files[i];
@@ -236,9 +236,10 @@ class MetadataFetcher {
           final url = Uri.parse('https://itunes.apple.com/search?term=$query&media=audiobook&limit=1');
           final response = await http.get(url).timeout(const Duration(seconds: 10));
           if (response.statusCode == 200) {
-            final data = jsonDecode(response.body);
-            if (data['results'] != null && data['results'].isNotEmpty) {
-              final result = data['results'][0];
+            final data = jsonDecode(response.body) as Map<String, dynamic>;
+            final results = data['results'] as List<dynamic>?;
+            if (results != null && results.isNotEmpty) {
+              final result = results[0] as Map<String, dynamic>;
               final rawDesc = result['description']?.toString() ?? '';
               itunesDesc = rawDesc.replaceAll(RegExp(r'<[^>]*>|&[^;]+;'), ''); // Strip HTML
               itunesYear = result['releaseDate']?.toString().substring(0, 4);
@@ -269,9 +270,10 @@ class MetadataFetcher {
           final url = Uri.parse('https://www.googleapis.com/books/v1/volumes?q=$query&maxResults=1');
           final response = await http.get(url).timeout(const Duration(seconds: 10));
           if (response.statusCode == 200) {
-            final data = jsonDecode(response.body);
-            if (data['items'] != null && data['items'].isNotEmpty) {
-              final vol = data['items'][0]['volumeInfo'];
+            final data = jsonDecode(response.body) as Map<String, dynamic>;
+            final items = data['items'] as List<dynamic>?;
+            if (items != null && items.isNotEmpty) {
+              final vol = items[0]['volumeInfo'] as Map<String, dynamic>;
               googleDesc = vol['description']?.toString();
               final pd = vol['publishedDate']?.toString();
               googleYear = pd != null && pd.length >= 4 ? pd.substring(0, 4) : null;
@@ -305,9 +307,10 @@ class MetadataFetcher {
           final url = Uri.parse('https://openlibrary.org/search.json?q=$query&limit=1');
           final response = await http.get(url).timeout(const Duration(seconds: 10));
           if (response.statusCode == 200) {
-            final data = jsonDecode(response.body);
-            if (data['docs'] != null && data['docs'].isNotEmpty) {
-              final doc = data['docs'][0];
+            final data = jsonDecode(response.body) as Map<String, dynamic>;
+            final docs = data['docs'] as List<dynamic>?;
+            if (docs != null && docs.isNotEmpty) {
+              final doc = docs[0] as Map<String, dynamic>;
               olYear = doc['first_publish_year']?.toString();
               olSubjects = (doc['subject'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
               olSeries = (doc['series_name'] as List<dynamic>?)?.firstOrNull?.toString();
@@ -419,7 +422,7 @@ class MetadataFetcher {
       }
       
       // Delay to respect OpenLibrary's rate limit policies
-      await Future.delayed(const Duration(seconds: 1));
+      await Future<void>.delayed(const Duration(seconds: 1));
     }
   }
 }

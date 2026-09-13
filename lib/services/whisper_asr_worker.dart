@@ -13,7 +13,7 @@ class WhisperAsrWorker {
   Isolate? _isolate;
   SendPort? _workerPort;
   ReceivePort? _mainPort;
-  StreamSubscription? _sub;
+  StreamSubscription<dynamic>? _sub;
   int _nextId = 1;
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
 

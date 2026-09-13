@@ -147,7 +147,7 @@ class ChapterStructureDetector {
     _cancelled = false;
     _language = resumeFrom?.language ?? language;
 
-    var rawMarkers =
+    final rawMarkers =
         List<DetectedMarker>.from(resumeFrom?.rawMarkers ?? const []);
     List<DetectedMarker> published() => matcher.dedupe(rawMarkers);
 

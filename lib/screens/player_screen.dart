@@ -32,7 +32,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late final LibraryStorage _storage;
   bool _showChapters = false;
   List<Bookmark> _bookmarks = [];
-  StreamSubscription? _playerStateSubscription;
+  StreamSubscription<PlayerState>? _playerStateSubscription;
   bool _handlingCompletion = false;
 
   @override
@@ -42,7 +42,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _playerService = getIt<AudioPlayerService>();
     
     _initPlayer();
-    _loadBookmarks();
+    unawaited(_loadBookmarks());
 
     if (!widget.audiobook.hasMetadataLocally) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -114,12 +114,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     if (!mounted) return;
     if (playNext) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => BlocProvider.value(
-            value: cubit,
-            child: PlayerScreen(audiobook: next),
+      unawaited(
+        Navigator.pushReplacement<void, void>(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => BlocProvider.value(
+              value: cubit,
+              child: PlayerScreen(audiobook: next),
+            ),
           ),
         ),
       );
@@ -246,7 +248,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _showEqAnalyzer() {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -846,7 +848,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             onPressed: () async {
               if (b.id != null) {
                 await _storage.removeBookmark(b.id!);
-                _loadBookmarks();
+                await _loadBookmarks();
               }
             },
           ),

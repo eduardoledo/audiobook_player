@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
@@ -118,7 +119,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
 
   Future<void> _pickDirectory(BuildContext context) async {
     final cubit = context.read<HomeCubit>();
-    String? path = await FilePicker.getDirectoryPath(
+    final String? path = await FilePicker.getDirectoryPath(
       dialogTitle: 'Select folder to scan for audiobooks',
     );
 
@@ -131,7 +132,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
     final cubit = context.read<HomeCubit>();
     Navigator.push(
       context,
-      MaterialPageRoute(
+      MaterialPageRoute<void>(
         builder: (context) => BlocProvider.value(
           value: cubit,
           child: PlayerScreen(audiobook: audiobook),
@@ -173,7 +174,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
+                    MaterialPageRoute<void>(
                       builder: (context) => const SeriesMappingScreen(),
                     ),
                   );
@@ -234,7 +235,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
+                      MaterialPageRoute<void>(
                         builder: (context) => const GoogleDriveScreen(),
                       ),
                     );
@@ -392,7 +393,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                         ),
                       );
                       if (updated == true && mounted) {
-                        homeCubit.rescanAll();
+                        unawaited(homeCubit.rescanAll());
                       }
                     },
                   ),
@@ -936,9 +937,9 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
               }
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              PopupMenuItem<String>(
+              const PopupMenuItem<String>(
                 value: 'path_roles',
-                child: const Row(
+                child: Row(
                   children: [
                     Icon(Icons.account_tree, color: Color(0xFFE8B86D)),
                     SizedBox(width: 12),
@@ -1074,7 +1075,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
     final ebooks = ebooksToDisplay ?? state.ebooks;
     if (ebooks.isEmpty) return const SizedBox.shrink();
 
-    final Map<String, Map<String?, Map<String?, List<dynamic>>>> grouped = {};
+    final Map<String, Map<String?, Map<String?, List<Ebook>>>> grouped = {};
     for (var book in ebooks) {
       grouped.putIfAbsent(book.author, () => {});
       grouped[book.author]!.putIfAbsent(book.universe, () => {});
@@ -1253,7 +1254,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
   Widget _buildEbookTile(
     BuildContext context,
     HomeState state,
-    dynamic book, {
+    Ebook book, {
     String prefix = '',
   }) {
     return ListTile(
@@ -1418,17 +1419,17 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
   void _showFilePathsDialog(BuildContext context, dynamic book) {
     final scanPaths = context.read<HomeCubit>().state.scanPaths;
 
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (context) {
         List<String> files = [];
         String bookPath = '';
-        if (book.runtimeType.toString() == 'Audiobook') {
-          files = (book as dynamic).files;
-          bookPath = (book as dynamic).path;
-        } else if (book.runtimeType.toString() == 'Ebook') {
-          files = [(book as dynamic).file];
-          bookPath = (book as dynamic).path;
+        if (book is Audiobook) {
+          files = book.files;
+          bookPath = book.path;
+        } else if (book is Ebook) {
+          files = [book.file];
+          bookPath = book.path;
         }
 
         String patternInfo = 'Desconocido';
@@ -1524,7 +1525,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
     HomeState state,
     Audiobook book,
   ) {
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF252525),
@@ -1564,7 +1565,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
 
   void _showCreatePlaylistDialog(BuildContext context) {
     final controller = TextEditingController();
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF252525),
@@ -1819,7 +1820,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
         childrenWidgets.add(_buildAudiobookTile(context, state, item));
       } else {
         childrenWidgets.add(
-          _buildEbookTile(context, state, item as dynamic),
+          _buildEbookTile(context, state, item as Ebook),
         );
       }
     }

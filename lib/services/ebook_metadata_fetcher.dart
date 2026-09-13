@@ -113,9 +113,10 @@ class EbookMetadataFetcher {
         final response = await http.get(url).timeout(const Duration(seconds: 10));
 
         if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (data['items'] != null && data['items'].isNotEmpty) {
-            final volumeInfo = data['items'][0]['volumeInfo'];
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final items = data['items'] as List<dynamic>?;
+          if (items != null && items.isNotEmpty) {
+            final volumeInfo = items[0]['volumeInfo'] as Map<String, dynamic>;
             description = volumeInfo['description']?.toString();
             
             final rawDate = volumeInfo['publishedDate']?.toString();

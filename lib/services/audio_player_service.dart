@@ -148,10 +148,10 @@ class AudioPlayerService {
     bool rewindForResume = false,
   }) async {
     currentAudiobook = audiobook;
-    getIt<LibraryStorage>().saveLastPlayedBook(audiobook.path);
+    unawaited(getIt<LibraryStorage>().saveLastPlayedBook(audiobook.path));
 
     // Asynchronously load and apply settings
-    _loadAndApplyAudioSettings(audiobook.path);
+    unawaited(_loadAndApplyAudioSettings(audiobook.path));
 
     final displayTitle = (audiobook.series != null && audiobook.series!.isNotEmpty)
         ? '${audiobook.series} - ${audiobook.title}'
@@ -319,7 +319,7 @@ class AudioPlayerService {
     if (_player.playing) {
       final currentVol = _player.volume;
       for (int i = 10; i >= 0; i--) {
-        await Future.delayed(const Duration(milliseconds: 150));
+        await Future<void>.delayed(const Duration(milliseconds: 150));
         await _player.setVolume(currentVol * (i / 10.0));
       }
       await pause();

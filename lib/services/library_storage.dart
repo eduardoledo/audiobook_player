@@ -544,7 +544,7 @@ class LibraryStorage {
       final jsonStr = maps.first['value'] as String;
       try {
         final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
-        return decoded.map((key, value) => MapEntry(key, List<String>.from(value)));
+        return decoded.map((key, value) => MapEntry(key, List<String>.from(value as Iterable<dynamic>)));
       } catch (_) {}
     }
     return {};

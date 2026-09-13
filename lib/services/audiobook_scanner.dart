@@ -711,8 +711,8 @@ class AudiobookScanner {
       }
 
       // First partition
-      var headLen = min(_metadataChunkBytes, fileSize);
-      var head = await readRange(0, headLen);
+      final headLen = min(_metadataChunkBytes, fileSize);
+      Uint8List head = await readRange(0, headLen);
 
       // If ID3v2 is larger than the first chunk, keep reading partitions
       // until we have the tag plus a small audio header window.
@@ -980,22 +980,22 @@ class AudiobookScanner {
   }
 
   static Future<void> _isolateScan(Map<String, dynamic> args) async {
-    final String directoryPath = args['path'];
-    final SendPort sendPort = args['sendPort'];
-    final Set<String> skipPaths = args['skipPaths'] ?? {};
-    final Map<String, List<String>>? seriesRules = args['seriesRules'];
-    final List<String> globalPatterns = args['globalPatterns'] ?? [];
-    final Map<String, String> sagaCodes = args['sagaCodes'] ?? {};
-    final Set<String> knownAuthors = args['knownAuthors'] ?? {};
-    final Set<String> knownSagas = args['knownSagas'] ?? {};
-    final Map<String, dynamic> rawRules = args['pathPatternRules'] ?? {};
+    final String directoryPath = args['path'] as String;
+    final SendPort sendPort = args['sendPort'] as SendPort;
+    final Set<String> skipPaths = (args['skipPaths'] as Set<String>?) ?? {};
+    final Map<String, List<String>>? seriesRules = args['seriesRules'] as Map<String, List<String>>?;
+    final List<String> globalPatterns = (args['globalPatterns'] as List<String>?) ?? [];
+    final Map<String, String> sagaCodes = (args['sagaCodes'] as Map<String, String>?) ?? {};
+    final Set<String> knownAuthors = (args['knownAuthors'] as Set<String>?) ?? {};
+    final Set<String> knownSagas = (args['knownSagas'] as Set<String>?) ?? {};
+    final Map<String, dynamic> rawRules = (args['pathPatternRules'] as Map<String, dynamic>?) ?? {};
     final Map<String, PathPatternRule> pathPatternRules = rawRules.map(
       (k, v) => MapEntry(k, PathPatternRule.fromJson(v as Map<String, dynamic>)),
     );
 
     try {
       // Get top-level directories for progress calculation
-      List<Directory> topLevelDirs = [];
+      final List<Directory> topLevelDirs = [];
     try {
       final baseDir = Directory(directoryPath);
       await for (final entity in baseDir.list(recursive: false)) {
@@ -1180,7 +1180,7 @@ class AudiobookScanner {
       }
     }
 
-      sendPort.send(ScanMessage(progress: 1.0));
+      sendPort.send(const ScanMessage(progress: 1.0));
     } catch (e) {
       // Prevent isolate from terminating silently without notifying controller
     } finally {
@@ -1211,12 +1211,12 @@ class AudiobookScanner {
       customRule: customRule,
     );
     String bookTitle = dirPathMetadata?.bookTitle ?? p.basename(dirPath);
-    String author = hierarchyMeta['author'] ?? dirPathMetadata?.author ?? 'Unknown';
-    String? universe = hierarchyMeta['universe'] ?? _nonEmpty(dirPathMetadata?.universe);
-    String? saga = hierarchyMeta['saga'] ?? dirPathMetadata?.saga;
-    String? era = hierarchyMeta['era']?.toString() ?? dirPathMetadata?.era;
-    String? universeOrder = dirPathMetadata?.universeOrder;
-    List<double> readingOrderKey =
+    String author = (hierarchyMeta['author'] as String?) ?? dirPathMetadata?.author ?? 'Unknown';
+    String? universe = (hierarchyMeta['universe'] as String?) ?? _nonEmpty(dirPathMetadata?.universe);
+    String? saga = (hierarchyMeta['saga'] as String?) ?? dirPathMetadata?.saga;
+    final String? era = hierarchyMeta['era']?.toString() ?? dirPathMetadata?.era;
+    final String? universeOrder = dirPathMetadata?.universeOrder;
+    final List<double> readingOrderKey =
         List<double>.from(dirPathMetadata?.readingOrderKey ?? const []);
     String? publishYear = dirPathMetadata?.publishYear ??
         publishYearFromPath(p.basename(dirPath));

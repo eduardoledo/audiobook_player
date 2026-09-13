@@ -92,7 +92,7 @@ class GoogleDriveService {
   Future<File> downloadFile(
     drive.File driveFile, 
     String localDirPath, 
-    {Function(double)? onProgress}
+    {void Function(double)? onProgress}
   ) async {
     if (_driveApi == null) throw Exception("Not signed in");
     if (driveFile.id == null || driveFile.name == null) {

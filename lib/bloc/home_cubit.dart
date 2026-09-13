@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import '../models/audiobook.dart';
 import '../models/ebook.dart';
 import '../models/playlist.dart';
+import '../models/scan_message.dart';
 import '../service_locator.dart';
 import '../services/audiobook_scanner.dart';
 import '../services/library_storage.dart';
@@ -21,7 +22,7 @@ class HomeCubit extends Cubit<HomeState> {
   final LibraryStorage _storage = getIt<LibraryStorage>();
   final AudiobookScanner _scanner = getIt<AudiobookScanner>();
   
-  StreamSubscription? _scanSubscription;
+  StreamSubscription<ScanMessage>? _scanSubscription;
 
   HomeCubit() : super(const HomeState()) {
     _initFetcher();
@@ -268,7 +269,7 @@ class HomeCubit extends Cubit<HomeState> {
           emit(state.copyWith(isScanning: false, scanProgress: null));
           _scanSubscription = null;
         },
-        onError: (e) {
+        onError: (Object e) {
           emit(state.copyWith(error: e.toString(), isScanning: false, scanProgress: null));
           _scanSubscription = null;
         },
@@ -335,7 +336,7 @@ class HomeCubit extends Cubit<HomeState> {
               ));
             },
             onDone: () => completer.complete(),
-            onError: (e) {
+            onError: (Object e) {
               emit(state.copyWith(error: e.toString()));
               completer.complete();
             },
@@ -486,7 +487,7 @@ class HomeCubit extends Cubit<HomeState> {
     final result = await Isolate.run(() async {
       debugPrint('ensureChaptersCalculated isolate: scanning files for ${book.path}');
       double cumulativeStart = 0.0;
-      List<Chapter> calculatedChapters = [];
+      final List<Chapter> calculatedChapters = [];
       
       for (int i = 0; i < book.files.length; i++) {
         final path = book.files[i];

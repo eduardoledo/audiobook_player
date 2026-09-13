@@ -49,7 +49,7 @@ class PlaylistsTab extends StatelessWidget {
                 ),
                 onTap: () {
                   // Show books in playlist
-                  showModalBottomSheet(
+                  showModalBottomSheet<void>(
                     context: context,
                     backgroundColor: const Color(0xFF1A1A1A),
                     builder: (context) {
@@ -81,7 +81,7 @@ class PlaylistsTab extends StatelessWidget {
                                     Navigator.pop(context); // close bottom sheet
                                     Navigator.push(
                                       context,
-                                      MaterialPageRoute(
+                                      MaterialPageRoute<void>(
                                         builder: (_) => BlocProvider.value(
                                           value: cubit,
                                           child: PlayerScreen(audiobook: book),

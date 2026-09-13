@@ -21,14 +21,14 @@ class EbookReader {
     if (ebook.isEpub) {
       Navigator.push(
         context,
-        MaterialPageRoute(
+        MaterialPageRoute<void>(
           builder: (context) => EpubReaderScreen(ebook: ebook),
         ),
       );
     } else if (ebook.isPdf) {
       Navigator.push(
         context,
-        MaterialPageRoute(
+        MaterialPageRoute<void>(
           builder: (context) => PdfReaderScreen(ebook: ebook),
         ),
       );
@@ -90,7 +90,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
         child: EpubViewer(
           epubSource: EpubSource.fromFile(File(widget.ebook.file)),
           epubController: epubController,
-          displaySettings: EpubDisplaySettings(flow: EpubFlow.paginated, snap: true),
+          displaySettings: const EpubDisplaySettings(flow: EpubFlow.paginated, snap: true),
         ),
       ),
     );

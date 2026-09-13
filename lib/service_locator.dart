@@ -1,5 +1,7 @@
 import 'package:get_it/get_it.dart';
 
+import 'features/player/data/repositories/player_repository_impl.dart';
+import 'features/player/domain/repositories/player_repository.dart';
 import 'services/audiobook_scanner.dart';
 import 'services/library_storage.dart';
 import 'services/audio_player_service.dart';
@@ -16,6 +18,12 @@ Future<void> setupServiceLocator() async {
 
   getIt.registerLazySingleton<AudiobookScanner>(() => AudiobookScanner());
   getIt.registerSingleton<AudioPlayerService>(AudioPlayerService());
+  getIt.registerLazySingleton<PlayerRepository>(
+    () => PlayerRepositoryImpl(
+      playerService: getIt<AudioPlayerService>(),
+      storage: getIt<LibraryStorage>(),
+    ),
+  );
   getIt.registerLazySingleton<GoogleDriveService>(() => GoogleDriveService());
   getIt.registerLazySingleton<WhisperModelManager>(() => WhisperModelManager());
 
