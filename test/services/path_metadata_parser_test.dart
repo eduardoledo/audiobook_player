@@ -12,6 +12,16 @@ void main() {
       expect(meta.bookTitle, equals('The Final Empire'));
     });
 
+    test('parses 1-segment standalone path setting author == Unknown, saga == null, universe == null', () {
+      const parser = PathMetadataParser();
+      final meta = parser.parsePath('2017 - Artemis (Sci-Fi)');
+
+      expect(meta.author, equals('Unknown'));
+      expect(meta.universe, isNull);
+      expect(meta.saga, isNull);
+      expect(meta.bookTitle, equals('Artemis (Sci-Fi)'));
+    });
+
     test('parses 2-segment standalone path (Author/BookTitle) assigning saga == null and universe == null', () {
       const parser = PathMetadataParser();
       final meta = parser.parsePath('Stephen King/The Shining');
@@ -50,6 +60,11 @@ void main() {
       expect(PathMetadataParser.publishYearFromPath('The Final Empire (2006)'), equals('2006'));
       expect(PathMetadataParser.publishYearFromPath('1973 - The Hobbit'), equals('1973'));
       expect(PathMetadataParser.narratorFromPath('The Hobbit (read by Frank Muller)'), equals('Frank Muller'));
+      expect(PathMetadataParser.narratorFromPath('The Mummy Read by Bob Askey'), equals('Bob Askey'));
+      expect(PathMetadataParser.narratorFromPath('The Mummy - Narrated by Bob Askey'), equals('Bob Askey'));
+
+      expect(PathMetadataParser.stripNarratorFromTitle('The Mummy Read by Bob Askey'), equals('The Mummy'));
+      expect(PathMetadataParser.stripNarratorFromTitle('1989 - The Mummy or Ramses the Damned (Read by Bob Askey)'), equals('1989 - The Mummy or Ramses the Damned'));
 
       const parser = PathMetadataParser();
       final meta = parser.parsePath('Brandon Sanderson/Mistborn (2006)/01 - The Final Empire (2006) (read by Michael Kramer)');

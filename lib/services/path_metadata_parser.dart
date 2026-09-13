@@ -163,8 +163,9 @@ class PathMetadataParser {
   }
 
   static final RegExp _narratorParen = RegExp(
-    r'\(\s*(?:[A-Za-z]{1,8}\d{1,3}\s*[-–—:]\s*)?'
-    r'(?:read|narrated|performed|voiced|told)\s+by\s+([^)]+?)\s*\)',
+    r'(?:\(|\s*[-–—:]\s*|\b)'
+    r'(?:[A-Za-z]{1,8}\d{1,3}\s*[-–—:]\s*)?'
+    r'(?:read|narrated|performed|voiced|told)\s+by\s+([^()]+?)(?:\)|$)',
     caseSensitive: false,
   );
 
