@@ -122,3 +122,6 @@ Whenever displaying ticket lists, file paths, or reports, every ticket title/pat
 
 ### Plain Text Absolute File Paths Rule
 Whenever presenting lists of tickets, always provide the exact absolute file path in plain code format (e.g. `.scratch/smart-audiobook-player-parity/issues/04-multi-root-library-and-cover-art-resolver.md`) in addition to markdown links, so the user can easily select or click it to complete the path in their command input.
+
+### Interactive Mention & Link Syntax Rule
+Whenever presenting ticket lists, format ticket paths using `@-mention` syntax (e.g. `@[.scratch/smart-audiobook-player-parity/issues/04-multi-root-library-and-cover-art-resolver.md]`) or `[file.md](file:///path)` links so that clicking them directly completes or inputs the path string in the chat prompt.
