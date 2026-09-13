@@ -60,6 +60,17 @@ void main() {
       expect(AudiobookScanner.stripOrderPrefix('08-The Last Guardian'),
           'The Last Guardian');
     });
+
+    test('sanitizes publication year and narrator from bookTitle in parseDirPath', () {
+      const base = '/audiobooks';
+      const path = '$base/Brandon Sanderson/Mistborn/01 - The Final Empire (2006) (read by Michael Kramer)';
+      final metadata = AudiobookScanner.parseDirPath(path, base);
+
+      expect(metadata!.bookTitle, equals('The Final Empire'));
+      expect(metadata.publishYear, equals('2006'));
+      expect(metadata.narrator, equals('Michael Kramer'));
+      expect(metadata.seriesSequence, equals('01'));
+    });
   });
 
   group('AudiobookScanner part folder detection', () {

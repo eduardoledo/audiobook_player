@@ -12,6 +12,16 @@ void main() {
       expect(meta.bookTitle, equals('The Final Empire'));
     });
 
+    test('parses 2-segment standalone path (Author/BookTitle) assigning saga == null and universe == null', () {
+      const parser = PathMetadataParser();
+      final meta = parser.parsePath('Stephen King/The Shining');
+
+      expect(meta.author, equals('Stephen King'));
+      expect(meta.universe, isNull);
+      expect(meta.saga, isNull);
+      expect(meta.bookTitle, equals('The Shining'));
+    });
+
     test('parses manual user-configured segment mapping rules', () {
       const mapping = SegmentPathMapping(
         segmentRoles: [
@@ -50,6 +60,16 @@ void main() {
       expect(meta.narrator, equals('Michael Kramer'));
       expect(meta.bookTitle, equals('The Final Empire'));
       expect(meta.saga, equals('Mistborn'));
+    });
+
+    test('deduplicates hierarchy levels when lower segment matches parent level name', () {
+      const parser = PathMetadataParser();
+      final meta = parser.parsePath('Brandon Sanderson/Cosmere/Cosmere/The Final Empire');
+
+      expect(meta.author, equals('Brandon Sanderson'));
+      expect(meta.universe, equals('Cosmere'));
+      expect(meta.saga, isNull);
+      expect(meta.bookTitle, equals('The Final Empire'));
     });
   });
 }

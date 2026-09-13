@@ -371,11 +371,35 @@ class PathMetadataParser {
     final extractedNarrator = narratorFromPath(relativePath) ?? narratorFromPath(rawTitle);
     final cleanTitle = sanitizeTitle(rawTitle, stripOrder: true);
 
+    String? finalUniverse = universe;
+    String? finalSaga = saga;
+    String? finalEra = era;
+
+    final authorLower = author.toLowerCase().trim();
+    if (finalUniverse != null && finalUniverse.toLowerCase().trim() == authorLower) {
+      finalUniverse = null;
+    }
+    final parentLevels = [
+      authorLower,
+      if (finalUniverse != null) finalUniverse.toLowerCase().trim(),
+    ];
+
+    if (finalSaga != null && parentLevels.contains(finalSaga.toLowerCase().trim())) {
+      finalSaga = null;
+    }
+    if (finalSaga != null) {
+      parentLevels.add(finalSaga.toLowerCase().trim());
+    }
+
+    if (finalEra != null && parentLevels.contains(finalEra.toLowerCase().trim())) {
+      finalEra = null;
+    }
+
     return DirPathMetadata(
       author: author,
-      universe: universe,
-      saga: saga,
-      era: era,
+      universe: finalUniverse,
+      saga: finalSaga,
+      era: finalEra,
       bookTitle: cleanTitle.isEmpty ? rawTitle : cleanTitle,
       publishYear: extractedYear,
       narrator: extractedNarrator,
