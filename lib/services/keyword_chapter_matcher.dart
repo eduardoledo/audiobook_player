@@ -22,6 +22,29 @@ class KeywordChapterMatcher {
     return s;
   }
 
+  /// Matches spoken opening phrase against known eBook section titles.
+  static String? matchChapterTitle({
+    required String phrase,
+    required List<String> knownTitles,
+  }) {
+    final normPhrase = normalize(phrase);
+    if (normPhrase.isEmpty) return null;
+
+    for (final title in knownTitles) {
+      final normTitle = normalize(title);
+      if (normPhrase.contains(normTitle) || normTitle.contains(normPhrase)) {
+        return title;
+      }
+      // Compare word tokens
+      final titleTokens = normTitle.split(' ').where((w) => w.length > 2).toSet();
+      final phraseTokens = normPhrase.split(' ').where((w) => w.length > 2).toSet();
+      if (titleTokens.isNotEmpty && titleTokens.intersection(phraseTokens).length >= titleTokens.length / 2) {
+        return title;
+      }
+    }
+    return null;
+  }
+
   /// Number words / roman numerals accepted for chapter indices.
   static const _numberWordAlt =
       r'uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|'

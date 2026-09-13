@@ -43,3 +43,33 @@ class AudioEqPreset {
     ),
   ];
 }
+
+/// 5-Band Graphic Equalizer Profile (Ticket 07).
+class AudioEqProfile {
+  final String presetName;
+  final double band60Hz;
+  final double band230Hz;
+  final double band910Hz;
+  final double band3600Hz;
+  final double band14000Hz;
+
+  const AudioEqProfile({
+    required this.presetName,
+    this.band60Hz = 0.0,
+    this.band230Hz = 0.0,
+    this.band910Hz = 0.0,
+    this.band3600Hz = 0.0,
+    this.band14000Hz = 0.0,
+  });
+
+  factory AudioEqProfile.voiceClarity() {
+    return const AudioEqProfile(
+      presetName: 'Voice Clarity',
+      band60Hz: -3.0,
+      band230Hz: -1.0,
+      band910Hz: 3.0,
+      band3600Hz: 5.0,
+      band14000Hz: 2.0,
+    );
+  }
+}

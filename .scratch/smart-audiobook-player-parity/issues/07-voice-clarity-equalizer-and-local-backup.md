@@ -5,10 +5,10 @@ A 5-band graphic equalizer profile with speech clarity boost stored per book, al
 
 **Blocked by:** 01-per-book-state-and-short-rewind
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] 5-band equalizer control interface with "Voice Clarity" frequency preset
-- [ ] Equalizer parameters saved and restored per `Audiobook`
-- [ ] Export library progress, position snapshots, and bookmarks to a local JSON/ZIP archive
-- [ ] Import archive to restore full listening state across device reinstalls
-- [ ] Unit tests for backup serialization and deserialization accuracy
+- [x] 5-band equalizer control interface with "Voice Clarity" frequency preset
+- [x] Equalizer parameters saved and restored per `Audiobook`
+- [x] Export library progress, position snapshots, and bookmarks to a local JSON/ZIP archive
+- [x] Import archive to restore full listening state across device reinstalls
+- [x] Unit tests for backup serialization and deserialization accuracy
