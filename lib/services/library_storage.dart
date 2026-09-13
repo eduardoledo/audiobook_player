@@ -55,7 +55,10 @@ class LibraryStorage {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             book_path TEXT,
             position_ms INTEGER,
-            label TEXT
+            label TEXT,
+            text_note TEXT,
+            audio_note_path TEXT,
+            created_at INTEGER
           )
         ''');
         await db.execute('''
@@ -101,7 +104,7 @@ class LibraryStorage {
     
     _db = await openDatabase(
       path,
-      version: 11,
+      version: 12,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE scan_paths (
@@ -151,7 +154,10 @@ class LibraryStorage {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             book_path TEXT,
             position_ms INTEGER,
-            label TEXT
+            label TEXT,
+            text_note TEXT,
+            audio_note_path TEXT,
+            created_at INTEGER
           )
         ''');
         await db.execute('''
@@ -194,6 +200,13 @@ class LibraryStorage {
         ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 12) {
+          try {
+            await db.execute('ALTER TABLE bookmarks ADD COLUMN text_note TEXT');
+            await db.execute('ALTER TABLE bookmarks ADD COLUMN audio_note_path TEXT');
+            await db.execute('ALTER TABLE bookmarks ADD COLUMN created_at INTEGER');
+          } catch (_) {}
+        }
         if (oldVersion < 11) {
           await db.execute('''
             CREATE TABLE IF NOT EXISTS jump_history (
@@ -627,39 +640,28 @@ class LibraryStorage {
   // --- Bookmarks ---
   
   Future<List<Bookmark>> getBookmarks(String bookPath) async {
-    final scanPath = await _getScanPathForBook(bookPath);
-    if (scanPath == null) return [];
-    final db = await _getLocalDatabase(scanPath);
-    final maps = await db.query('bookmarks', where: 'book_path = ?', whereArgs: [bookPath], orderBy: 'position_ms ASC');
-    return maps.map((e) => Bookmark(
-      id: e['id'] as int,
-      bookPath: e['book_path'] as String,
-      positionMs: e['position_ms'] as int,
-      label: e['label'] as String?,
-    )).toList();
+    return getBookmarksForBook(bookPath);
   }
 
-  Future<void> addBookmark(String bookPath, int positionMs, String? label) async {
-    final scanPath = await _getScanPathForBook(bookPath);
-    if (scanPath == null) return;
-    final db = await _getLocalDatabase(scanPath);
-    await db.insert('bookmarks', {
-      'book_path': bookPath,
-      'position_ms': positionMs,
-      'label': label,
-    });
+  Future<List<Bookmark>> getBookmarksForBook(String bookPath) async {
+    final db = await database;
+    final maps = await db.query(
+      'bookmarks',
+      where: 'book_path = ?',
+      whereArgs: [bookPath],
+      orderBy: 'position_ms ASC',
+    );
+    return maps.map((e) => Bookmark.fromMap(e)).toList();
+  }
+
+  Future<int> addBookmark(Bookmark bookmark) async {
+    final db = await database;
+    return await db.insert('bookmarks', bookmark.toMap());
   }
 
   Future<void> removeBookmark(int id) async {
-    // Note: since we don't know the book path from just the id, we must search across all dbs.
-    final paths = await getScanPaths();
-    for (final scanPath in paths) {
-      try {
-        final db = await _getLocalDatabase(scanPath);
-        final count = await db.delete('bookmarks', where: 'id = ?', whereArgs: [id]);
-        if (count > 0) return;
-      } catch (_) {}
-    }
+    final db = await database;
+    await db.delete('bookmarks', where: 'id = ?', whereArgs: [id]);
   }
 
   // --- Playlists ---
