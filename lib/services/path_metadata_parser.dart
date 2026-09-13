@@ -357,7 +357,7 @@ class PathMetadataParser {
 
       final extractedYear = publishYearFromPath(relativePath) ?? publishYearFromPath(segments.last);
       final extractedNarrator = narrator ?? narratorFromPath(relativePath) ?? narratorFromPath(segments.last);
-      final cleanTitle = sanitizeTitle(bookTitle);
+      final cleanTitle = sanitizeTitle(bookTitle, stripOrder: true);
 
       return DirPathMetadata(
         author: author,

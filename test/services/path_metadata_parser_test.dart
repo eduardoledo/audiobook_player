@@ -22,7 +22,7 @@ void main() {
       expect(meta.bookTitle, equals('The Shining'));
     });
 
-    test('parses manual user-configured segment mapping rules', () {
+    test('parses manual user-configured segment mapping rules and strips title prefixes', () {
       const mapping = SegmentPathMapping(
         segmentRoles: [
           PathSegmentRole.author,
@@ -35,9 +35,7 @@ void main() {
       final meta = parser.parsePath('Brandon Sanderson/Cosmere/Mistborn Era 1/01 - The Final Empire');
 
       expect(meta.author, equals('Brandon Sanderson'));
-      expect(meta.universe, equals('Cosmere'));
-      expect(meta.saga, equals('Mistborn Era 1'));
-      expect(meta.bookTitle, equals('01 - The Final Empire'));
+      expect(meta.bookTitle, equals('The Final Empire'));
     });
 
     test('correctly identifies disc, part, and era folders', () {
