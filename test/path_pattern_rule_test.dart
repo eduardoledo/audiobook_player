@@ -48,5 +48,26 @@ void main() {
       expect(metadata.saga, 'Mistborn');
       expect(metadata.bookTitle, 'The Final Empire');
     });
+
+    test('serializes PathPatternRule correctly for atomic persistence before rescan', () {
+      const rule = PathPatternRule(
+        rootPath: '/audiobooks',
+        roles: [
+          PathSegmentRole.author,
+          PathSegmentRole.saga,
+          PathSegmentRole.bookTitle,
+        ],
+      );
+
+      final json = rule.toJson();
+      final restored = PathPatternRule.fromJson(json);
+
+      expect(restored.rootPath, equals('/audiobooks'));
+      expect(restored.roles, equals([
+        PathSegmentRole.author,
+        PathSegmentRole.saga,
+        PathSegmentRole.bookTitle,
+      ]));
+    });
   });
 }
