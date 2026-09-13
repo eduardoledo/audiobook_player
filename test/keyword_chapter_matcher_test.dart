@@ -48,12 +48,12 @@ void main() {
     });
 
     test('dedupe keeps higher priority within gap', () {
-      final a = DetectedMarker(
+      const a = DetectedMarker(
         type: MarkerType.chapter,
         label: 'Capítulo 1',
         positionMs: 1000,
       );
-      final b = DetectedMarker(
+      const b = DetectedMarker(
         type: MarkerType.prologue,
         label: 'Prólogo',
         positionMs: 2000,

@@ -11,7 +11,7 @@ void main() {
         ebookPath: '/storage/ebooks/sample.epub',
       );
 
-      expect(chapters, isA<List>());
+      expect(chapters, isA<List<Chapter>>());
     });
 
     test('returns embedded TOC directly if provided', () async {

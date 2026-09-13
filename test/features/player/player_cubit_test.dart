@@ -152,14 +152,14 @@ void main() {
   });
 
   test('initAudiobook updates audiobook and speed in state', () async {
-    final book = Audiobook(
+    const book = Audiobook(
       path: '/path/to/book',
       title: 'Test Title',
       author: 'Test Author',
       durationFormatted: '00:00:00',
       totalChapters: 1,
-      chapters: const [],
-      files: const ['/path/to/book/part1.mp3'],
+      chapters: [],
+      files: ['/path/to/book/part1.mp3'],
     );
 
     await cubit.initAudiobook(book);

@@ -6,8 +6,8 @@ import 'package:audiobook_player/models/audiobook.dart';
 void main() {
   group('AudiobookScanner parseDirPath tests', () {
     test('author/universe/saga/book pattern (4 segments)', () {
-      final base = '/Users/user/audiobooks';
-      final path =
+      const base = '/Users/user/audiobooks';
+      const path =
           '$base/Brandon Sanderson/Cosmere/Mistborn/The Final Empire';
       final metadata = AudiobookScanner.parseDirPath(path, base);
 
@@ -19,8 +19,8 @@ void main() {
     });
 
     test('author/saga/book pattern (3 segments)', () {
-      final base = '/Users/user/audiobooks';
-      final path = '$base/Brandon Sanderson/Mistborn/The Final Empire';
+      const base = '/Users/user/audiobooks';
+      const path = '$base/Brandon Sanderson/Mistborn/The Final Empire';
       final metadata = AudiobookScanner.parseDirPath(path, base);
 
       expect(metadata, isNotNull);
@@ -31,8 +31,8 @@ void main() {
     });
 
     test('author/universe/saga/era/book pattern (5 segments)', () {
-      final base = '/Users/user/audiobooks';
-      final path =
+      const base = '/Users/user/audiobooks';
+      const path =
           '$base/Brandon Sanderson/Cosmere/02 - Mistborn/Era 1/01 - The Final Empire';
       final metadata = AudiobookScanner.parseDirPath(path, base);
 
@@ -48,8 +48,8 @@ void main() {
     });
 
     test('tight hyphen book prefixes (01-Title)', () {
-      final base = '/lib';
-      final path = '$base/Eoin Colfer/Artemis Fowl/02-The Arctic Incident';
+      const base = '/lib';
+      const path = '$base/Eoin Colfer/Artemis Fowl/02-The Arctic Incident';
       final metadata = AudiobookScanner.parseDirPath(path, base);
 
       expect(metadata!.author, 'Eoin Colfer');
@@ -165,10 +165,10 @@ void main() {
     }
 
     test('Sorts primarily by seriesSequence (including decimals)', () {
-      final b1 = Audiobook(path: 'p1', title: 'Book 1.5', seriesSequence: '1.5', author: 'A', files: const [], durationFormatted: '00:00:00', totalChapters: 0, chapters: const []);
-      final b2 = Audiobook(path: 'p2', title: 'Book 1', seriesSequence: '1', author: 'A', files: const [], durationFormatted: '00:00:00', totalChapters: 0, chapters: const []);
-      final b3 = Audiobook(path: 'p3', title: 'Book 2', seriesSequence: '2', author: 'A', files: const [], durationFormatted: '00:00:00', totalChapters: 0, chapters: const []);
-      final b4 = Audiobook(path: 'p4', title: 'No Seq Book', seriesSequence: null, author: 'A', files: const [], durationFormatted: '00:00:00', totalChapters: 0, chapters: const []);
+      const b1 = Audiobook(path: 'p1', title: 'Book 1.5', seriesSequence: '1.5', author: 'A', files: [], durationFormatted: '00:00:00', totalChapters: 0, chapters: []);
+      const b2 = Audiobook(path: 'p2', title: 'Book 1', seriesSequence: '1', author: 'A', files: [], durationFormatted: '00:00:00', totalChapters: 0, chapters: []);
+      const b3 = Audiobook(path: 'p3', title: 'Book 2', seriesSequence: '2', author: 'A', files: [], durationFormatted: '00:00:00', totalChapters: 0, chapters: []);
+      const b4 = Audiobook(path: 'p4', title: 'No Seq Book', seriesSequence: null, author: 'A', files: [], durationFormatted: '00:00:00', totalChapters: 0, chapters: []);
 
       final list = [b3, b1, b4, b2];
       list.sort(sortBooks);
@@ -180,9 +180,9 @@ void main() {
     });
 
     test('Sorts by publishYear if seriesSequence is missing/equal', () {
-      final b1 = Audiobook(path: 'p1', title: 'Later Book', publishYear: '2020', author: 'A', files: const [], durationFormatted: '00:00:00', totalChapters: 0, chapters: const []);
-      final b2 = Audiobook(path: 'p2', title: 'Earlier Book', publishYear: '2010', author: 'A', files: const [], durationFormatted: '00:00:00', totalChapters: 0, chapters: const []);
-      final b3 = Audiobook(path: 'p3', title: 'No Year Book', publishYear: null, author: 'A', files: const [], durationFormatted: '00:00:00', totalChapters: 0, chapters: const []);
+      const b1 = Audiobook(path: 'p1', title: 'Later Book', publishYear: '2020', author: 'A', files: [], durationFormatted: '00:00:00', totalChapters: 0, chapters: []);
+      const b2 = Audiobook(path: 'p2', title: 'Earlier Book', publishYear: '2010', author: 'A', files: [], durationFormatted: '00:00:00', totalChapters: 0, chapters: []);
+      const b3 = Audiobook(path: 'p3', title: 'No Year Book', publishYear: null, author: 'A', files: [], durationFormatted: '00:00:00', totalChapters: 0, chapters: []);
 
       final list = [b3, b1, b2];
       list.sort(sortBooks);
@@ -193,8 +193,8 @@ void main() {
     });
 
     test('Falls back to title alphabetical sorting', () {
-      final b1 = Audiobook(path: 'p1', title: 'Z Title', author: 'A', files: const [], durationFormatted: '00:00:00', totalChapters: 0, chapters: const []);
-      final b2 = Audiobook(path: 'p2', title: 'A Title', author: 'A', files: const [], durationFormatted: '00:00:00', totalChapters: 0, chapters: const []);
+      const b1 = Audiobook(path: 'p1', title: 'Z Title', author: 'A', files: [], durationFormatted: '00:00:00', totalChapters: 0, chapters: []);
+      const b2 = Audiobook(path: 'p2', title: 'A Title', author: 'A', files: [], durationFormatted: '00:00:00', totalChapters: 0, chapters: []);
 
       final list = [b1, b2];
       list.sort(sortBooks);

@@ -20,7 +20,7 @@ void main() {
       const bookAPath = '/storage/audiobooks/BookA';
       const bookBPath = '/storage/audiobooks/BookB';
 
-      final stateA = const BookPlaybackState(
+      const stateA = BookPlaybackState(
         bookPath: bookAPath,
         positionMs: 120000,
         chapterIndex: 2,
@@ -28,7 +28,7 @@ void main() {
         volumeGain: 1.5,
       );
 
-      final stateB = const BookPlaybackState(
+      const stateB = BookPlaybackState(
         bookPath: bookBPath,
         positionMs: 450000,
         chapterIndex: 5,

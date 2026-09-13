@@ -12,7 +12,7 @@ void main() {
                 return Center(
                   child: ElevatedButton(
                     onPressed: () {
-                      showModalBottomSheet(
+                      showModalBottomSheet<void>(
                         context: context,
                         builder: (_) => const _MockSleepTimerView(),
                       );
@@ -44,7 +44,7 @@ void main() {
                 return Center(
                   child: ElevatedButton(
                     onPressed: () {
-                      showModalBottomSheet(
+                      showModalBottomSheet<void>(
                         context: context,
                         builder: (_) => const _MockSpeedView(),
                       );
@@ -74,9 +74,9 @@ class _MockSleepTimerView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return const Column(
       mainAxisSize: MainAxisSize.min,
-      children: const [
+      children: [
         Text('Sleep Timer'),
         ListTile(title: Text('Off')),
         ListTile(title: Text('15 minutes')),
@@ -91,9 +91,9 @@ class _MockSpeedView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return const Column(
       mainAxisSize: MainAxisSize.min,
-      children: const [
+      children: [
         Text('Speed'),
         ListTile(title: Text('1.0x')),
         ListTile(title: Text('1.5x')),

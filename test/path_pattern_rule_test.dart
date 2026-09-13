@@ -5,12 +5,12 @@ import 'package:audiobook_player/services/audiobook_scanner.dart';
 void main() {
   group('Custom PathPatternRule parsing tests', () {
     test('Applies custom roles (Author / Saga / Book)', () {
-      final base = '/audiobooks';
-      final path = '$base/Anne Rice/Vampire Chronicles/Interview With the Vampire';
+      const base = '/audiobooks';
+      const path = '$base/Anne Rice/Vampire Chronicles/Interview With the Vampire';
 
-      final rule = PathPatternRule(
+      const rule = PathPatternRule(
         rootPath: base,
-        roles: const [
+        roles: [
           PathSegmentRole.author,
           PathSegmentRole.saga,
           PathSegmentRole.bookTitle,
@@ -26,12 +26,12 @@ void main() {
     });
 
     test('Applies custom roles with Universe and Ignore', () {
-      final base = '/audiobooks';
-      final path = '$base/Brandon Sanderson/Cosmere/Mistborn/The Final Empire/ExtraFolder';
+      const base = '/audiobooks';
+      const path = '$base/Brandon Sanderson/Cosmere/Mistborn/The Final Empire/ExtraFolder';
 
-      final rule = PathPatternRule(
+      const rule = PathPatternRule(
         rootPath: base,
-        roles: const [
+        roles: [
           PathSegmentRole.author,
           PathSegmentRole.universe,
           PathSegmentRole.saga,
