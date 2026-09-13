@@ -107,6 +107,15 @@ An advanced chapter detection feature combining audio silence scanning with eBoo
 ### Segment Path Mapper
 A user-configurable positional mapping rule that maps folder path segments (e.g., segment 0 = Author, segment 1 = Universe, segment 2 = Saga, segment 3 = Title) to override automatic pattern detection for custom directory layouts.
 
+### Cascading Segment Metadata Update
+The automated mechanism that propagates metadata modifications made to a parent directory segment (such as Author, Universe, or Saga) to all sibling audiobooks sharing the exact relative path prefix, updating both local `.metadata.json` files on disk and SQLite library records.
+
+### Path Metadata Parser
+A pure, stateless domain service (`PathMetadataParser`) responsible for classifying path segments, extracting publication years, narrator credits, and sequence positions, and stripping decorative token artifacts from clean book title strings.
+
+### Hierarchical Reading Order Key
+A composite double array (e.g. `[2.0, 1.0]`) extracted from folder hierarchy levels (Universe, Saga, Era, Book) used to sort audiobooks chronologically or in exact narrative sequence across the library.
+
 ---
 
 ## Development & Workflow Discipline

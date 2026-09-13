@@ -859,4 +859,57 @@ class LibraryStorage {
     );
     return maps.map((m) => m['position_ms'] as int).toList();
   }
+
+  /// Cascades metadata updates across a path segment directory to local disk
+  /// and updates all matching prefix entries in SQLite.
+  Future<int> updateSegmentMetadata({
+    required String scanRootPath,
+    required String segmentDirPath,
+    required Map<String, dynamic> metadata,
+    String metadataFileName = 'saga.metadata.json',
+  }) async {
+    final dir = Directory(segmentDirPath);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+
+    // 1. Write/update parent metadata file on disk
+    final metaFile = File(p.join(segmentDirPath, metadataFileName));
+    await metaFile.writeAsString(const JsonEncoder.withIndent('  ').convert(metadata));
+
+    // 2. Perform bulk prefix matching in local SQLite database
+    final db = await _getLocalDatabase(scanRootPath);
+    final normPrefix = p.normalize(segmentDirPath);
+    
+    final rows = await db.query('audiobooks');
+    var updatedCount = 0;
+
+    for (final row in rows) {
+      final bookPath = row['path'] as String?;
+      if (bookPath == null) continue;
+
+      if (p.normalize(bookPath).startsWith(normPrefix)) {
+        try {
+          final rawJson = row['json_data'] as String;
+          final map = jsonDecode(rawJson) as Map<String, dynamic>;
+          
+          metadata.forEach((key, value) {
+            if (value != null) {
+              map[key] = value;
+            }
+          });
+
+          await db.update(
+            'audiobooks',
+            {'json_data': jsonEncode(map)},
+            where: 'path = ?',
+            whereArgs: [bookPath],
+          );
+          updatedCount++;
+        } catch (_) {}
+      }
+    }
+
+    return updatedCount;
+  }
 }

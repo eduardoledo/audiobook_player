@@ -162,11 +162,138 @@ class PathMetadataParser {
     return total > 0 ? total : null;
   }
 
+  static final RegExp _narratorParen = RegExp(
+    r'\(\s*(?:[A-Za-z]{1,8}\d{1,3}\s*[-–—:]\s*)?'
+    r'(?:read|narrated|performed|voiced|told)\s+by\s+([^)]+?)\s*\)',
+    caseSensitive: false,
+  );
+
+  static String? publishYearFromPath(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return null;
+
+    final bracket = RegExp(r'\[\s*((?:19|20)\d{2})\s*\]').firstMatch(t);
+    if (bracket != null) return bracket.group(1);
+
+    final paren = RegExp(r'\(\s*((?:19|20)\d{2})\s*\)').firstMatch(t);
+    if (paren != null) return paren.group(1);
+
+    final authorYear =
+        RegExp(r'\[\s*[^\]]*?\.((?:19|20)\d{2})\s*\]').firstMatch(t);
+    if (authorYear != null) return authorYear.group(1);
+
+    final unclosed = RegExp(r'\[\s*((?:19|20)\d{2})\s*(?=\()').firstMatch(t);
+    if (unclosed != null) return unclosed.group(1);
+
+    final leading = RegExp(
+      r'^\s*((?:19|20)\d{2})\s*[-–—.:_|]\s+\S',
+    ).firstMatch(t);
+    if (leading != null) return leading.group(1);
+
+    return null;
+  }
+
+  static String stripPublishYearFromTitle(String title) {
+    var t = title.trim();
+    if (t.isEmpty) return t;
+
+    t = t.replaceAll(RegExp(r'\s*\[\s*[^\]]*?\.((?:19|20)\d{2})\s*\]\s*'), ' ');
+    t = t.replaceAll(RegExp(r'\s*\[\s*(?:19|20)\d{2}\s*\]\s*'), ' ');
+    t = t.replaceAll(RegExp(r'\s*\(\s*(?:19|20)\d{2}\s*\)\s*'), ' ');
+    t = t.replaceAll(RegExp(r'\s*\[\s*(?:19|20)\d{2}\s*(?=\()'), ' ');
+    t = t.replaceFirst(RegExp(r'^\s*(?:19|20)\d{2}\s*[-–—.:_|]\s*'), '');
+
+    t = t.replaceAll(RegExp(r'\s{2,}'), ' ');
+    t = t.replaceAll(RegExp(r'\s*-\s*(?=\()'), ' ');
+    t = t.replaceAll(RegExp(r'\s*-\s*$'), '');
+    t = t.replaceAll(RegExp(r'^\s*-\s*'), '');
+    return t.trim();
+  }
+
+  static String? narratorFromPath(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return null;
+    final m = _narratorParen.firstMatch(t);
+    if (m == null) return null;
+    final name = m.group(1)?.trim();
+    if (name == null || name.isEmpty) return null;
+    return name;
+  }
+
+  static String stripNarratorFromTitle(String title) {
+    var t = title.trim();
+    if (t.isEmpty) return t;
+
+    t = t.replaceAll(_narratorParen, ' ');
+    t = t.replaceAll(RegExp(r'\s{2,}'), ' ');
+    t = t.replaceAll(RegExp(r'\s*-\s*$'), '');
+    t = t.replaceAll(RegExp(r'^\s*-\s*'), '');
+    t = t.replaceAll(RegExp(r'\s*-\s*$'), '');
+    return t.trim();
+  }
+
+  static double? orderTokenFromSegment(String name) {
+    final n = name.trim();
+    if (n.isEmpty) return null;
+    if (RegExp(r'^\s*(?:19|20)\d{2}\b').hasMatch(n)) return null;
+    final tight = RegExp(r'^\s*(\d+(?:\.\d+)?)\s*[-_]\s*\S').firstMatch(n);
+    if (tight != null) return double.tryParse(tight.group(1)!);
+    final prefix = RegExp(r'^\s*(\d+(?:\.\d+)?)\s*[._\)|:]\s+\S').firstMatch(n);
+    if (prefix != null) return double.tryParse(prefix.group(1)!);
+    final pipe = RegExp(r'^\s*(\d+(?:\.\d+)?)\s*[|]\s*\S').firstMatch(n);
+    if (pipe != null) return double.tryParse(pipe.group(1)!);
+    final keyword = RegExp(
+      r'(?:era|eras|part|parte|act|acto|vol|volume|tomo|libro|cd|disc|disk|disco)'
+      r'[\s._|-]*(\d+(?:\.\d+)?)\b',
+      caseSensitive: false,
+    ).firstMatch(n);
+    if (keyword != null) return double.tryParse(keyword.group(1)!);
+    return null;
+  }
+
+  static String stripOrderPrefix(String name) {
+    var t = name.trim();
+    t = t.replaceFirst(RegExp(r'^\s*\d+(?:\.\d+)?\s*[-_]\s*'), '');
+    t = t.replaceFirst(RegExp(r'^\s*\d+(?:\.\d+)?\s*[._\)|:]\s+'), '');
+    t = t.replaceFirst(RegExp(r'^\s*\d+(?:\.\d+)?\s*[|]\s*'), '');
+    return t.trim();
+  }
+
+  static String? rawOrderPrefix(String name) {
+    final n = name.trim();
+    if (n.isEmpty) return null;
+    if (RegExp(r'^\s*(?:19|20)\d{2}\b').hasMatch(n)) return null;
+    final m = RegExp(
+      r'^\s*(\d+(?:\.\d+)?)\s*(?:[-_]\s*|[._\)|:]\s+|[|]\s+)',
+    ).firstMatch(n);
+    if (m == null || orderTokenFromSegment(n) == null) return null;
+    return m.group(1);
+  }
+
   /// Parses a relative path using segment mapping, custom regex rules, or default tokenization.
   DirPathMetadata parsePath(String relativePath) {
     final segments = relativePath.split('/').where((s) => s.isNotEmpty).toList();
     if (segments.isEmpty) {
       return const DirPathMetadata(author: 'Unknown', bookTitle: 'Unknown');
+    }
+
+    String sanitizeTitle(String title, {bool stripOrder = false}) {
+      var t = title;
+      final year = publishYearFromPath(t);
+      if (year != null) {
+        t = stripPublishYearFromTitle(t);
+      }
+      final narrator = narratorFromPath(t);
+      if (narrator != null) {
+        t = stripNarratorFromTitle(t);
+      }
+      if (stripOrder) {
+        final pos = rawOrderPrefix(t);
+        if (pos != null) {
+          t = stripOrderPrefix(t);
+        }
+      }
+      return t.trim();
     }
 
     // Apply manual positional segment mapping if provided
@@ -188,7 +315,7 @@ class PathMetadataParser {
             universe = val;
             break;
           case PathSegmentRole.saga:
-            saga = val;
+            saga = sanitizeTitle(val);
             break;
           case PathSegmentRole.era:
             era = val;
@@ -197,36 +324,61 @@ class PathMetadataParser {
             bookTitle = val;
             break;
           case PathSegmentRole.part:
-            narrator = val;
             break;
           case PathSegmentRole.ignore:
             break;
         }
       }
+
+      final extractedYear = publishYearFromPath(relativePath) ?? publishYearFromPath(segments.last);
+      final extractedNarrator = narrator ?? narratorFromPath(relativePath) ?? narratorFromPath(segments.last);
+      final cleanTitle = sanitizeTitle(bookTitle);
+
       return DirPathMetadata(
         author: author,
         universe: universe,
         saga: saga,
         era: era,
-        bookTitle: bookTitle,
-        narrator: narrator,
+        bookTitle: cleanTitle.isEmpty ? bookTitle : cleanTitle,
+        publishYear: extractedYear,
+        narrator: extractedNarrator,
       );
     }
 
-    // Default folder structure parsing: Author / [Universe /] [Saga /] BookTitle
+    String author = 'Unknown';
+    String? universe;
+    String? saga;
+    String? era;
+    String rawTitle = segments.last;
+
     if (segments.length == 1) {
-      return DirPathMetadata(author: 'Unknown', bookTitle: segments[0]);
+      rawTitle = segments[0];
     } else if (segments.length == 2) {
-      return DirPathMetadata(author: segments[0], bookTitle: segments[1]);
+      author = segments[0];
+      rawTitle = segments[1];
     } else if (segments.length == 3) {
-      return DirPathMetadata(author: segments[0], saga: segments[1], bookTitle: segments[2]);
+      author = segments[0];
+      saga = sanitizeTitle(segments[1]);
+      rawTitle = segments[2];
     } else {
-      return DirPathMetadata(
-        author: segments[0],
-        universe: segments[1],
-        saga: segments[2],
-        bookTitle: segments.last,
-      );
+      author = segments[0];
+      universe = segments[1];
+      saga = sanitizeTitle(segments[2]);
+      rawTitle = segments.last;
     }
+
+    final extractedYear = publishYearFromPath(relativePath) ?? publishYearFromPath(rawTitle);
+    final extractedNarrator = narratorFromPath(relativePath) ?? narratorFromPath(rawTitle);
+    final cleanTitle = sanitizeTitle(rawTitle, stripOrder: true);
+
+    return DirPathMetadata(
+      author: author,
+      universe: universe,
+      saga: saga,
+      era: era,
+      bookTitle: cleanTitle.isEmpty ? rawTitle : cleanTitle,
+      publishYear: extractedYear,
+      narrator: extractedNarrator,
+    );
   }
 }

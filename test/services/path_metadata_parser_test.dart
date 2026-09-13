@@ -37,5 +37,19 @@ void main() {
       expect(PathMetadataParser.partOrderFromFolderName('Prologue'), equals(0));
       expect(PathMetadataParser.partOrderFromFolderName('Part 3'), equals(3));
     });
+
+    test('extracts publication year and narrator from path strings and sanitizes title', () {
+      expect(PathMetadataParser.publishYearFromPath('The Final Empire (2006)'), equals('2006'));
+      expect(PathMetadataParser.publishYearFromPath('1973 - The Hobbit'), equals('1973'));
+      expect(PathMetadataParser.narratorFromPath('The Hobbit (read by Frank Muller)'), equals('Frank Muller'));
+
+      const parser = PathMetadataParser();
+      final meta = parser.parsePath('Brandon Sanderson/Mistborn (2006)/01 - The Final Empire (2006) (read by Michael Kramer)');
+
+      expect(meta.publishYear, equals('2006'));
+      expect(meta.narrator, equals('Michael Kramer'));
+      expect(meta.bookTitle, equals('The Final Empire'));
+      expect(meta.saga, equals('Mistborn'));
+    });
   });
 }

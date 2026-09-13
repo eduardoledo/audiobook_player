@@ -339,45 +339,14 @@ class AudiobookScanner {
     return result;
   }
 
-  /// Accepts `02 - Title`, `02-Title`, `02_Title`. Dot/colon/paren need a space
-  /// after the separator so `3.14` is not treated as order `3`.
-  static double? orderTokenFromSegment(String name) {
-    final n = name.trim();
-    if (n.isEmpty) return null;
-    if (RegExp(r'^\s*(?:19|20)\d{2}\b').hasMatch(n)) return null;
-    final tight = RegExp(r'^\s*(\d+(?:\.\d+)?)\s*[-_]\s*\S').firstMatch(n);
-    if (tight != null) return double.tryParse(tight.group(1)!);
-    final prefix = RegExp(r'^\s*(\d+(?:\.\d+)?)\s*[._\)|:]\s+\S').firstMatch(n);
-    if (prefix != null) return double.tryParse(prefix.group(1)!);
-    final pipe = RegExp(r'^\s*(\d+(?:\.\d+)?)\s*[|]\s*\S').firstMatch(n);
-    if (pipe != null) return double.tryParse(pipe.group(1)!);
-    final keyword = RegExp(
-      r'(?:era|eras|part|parte|act|acto|vol|volume|tomo|libro|cd|disc|disk|disco)'
-      r'[\s._|-]*(\d+(?:\.\d+)?)\b',
-      caseSensitive: false,
-    ).firstMatch(n);
-    if (keyword != null) return double.tryParse(keyword.group(1)!);
-    return null;
-  }
+  static double? orderTokenFromSegment(String name) =>
+      PathMetadataParser.orderTokenFromSegment(name);
 
-  static String stripOrderPrefix(String name) {
-    var t = name.trim();
-    t = t.replaceFirst(RegExp(r'^\s*\d+(?:\.\d+)?\s*[-_]\s*'), '');
-    t = t.replaceFirst(RegExp(r'^\s*\d+(?:\.\d+)?\s*[._\)|:]\s+'), '');
-    t = t.replaceFirst(RegExp(r'^\s*\d+(?:\.\d+)?\s*[|]\s*'), '');
-    return t.trim();
-  }
+  static String stripOrderPrefix(String name) =>
+      PathMetadataParser.stripOrderPrefix(name);
 
-  static String? rawOrderPrefix(String name) {
-    final n = name.trim();
-    if (n.isEmpty) return null;
-    if (RegExp(r'^\s*(?:19|20)\d{2}\b').hasMatch(n)) return null;
-    final m = RegExp(
-      r'^\s*(\d+(?:\.\d+)?)\s*(?:[-_]\s*|[._\)|:]\s+|[|]\s+)',
-    ).firstMatch(n);
-    if (m == null || orderTokenFromSegment(n) == null) return null;
-    return m.group(1);
-  }
+  static String? rawOrderPrefix(String name) =>
+      PathMetadataParser.rawOrderPrefix(name);
 
   static int compareReadingOrderKeys(List<double> a, List<double> b) {
     final n = a.length < b.length ? a.length : b.length;
@@ -597,81 +566,19 @@ class AudiobookScanner {
     );
   }
 
-  /// Extracts a publication year (19xx/20xx) from a path segment or title.
-  ///
-  /// Variants: `[1976]`, `[1990 ]`, `(2014)`, `1973 - Title`,
-  /// `[Jeff Lindsay.2004]`, `[1998 (…`.
-  static String? publishYearFromPath(String text) {
-    final t = text.trim();
-    if (t.isEmpty) return null;
 
-    final bracket = RegExp(r'\[\s*((?:19|20)\d{2})\s*\]').firstMatch(t);
-    if (bracket != null) return bracket.group(1);
 
-    final paren = RegExp(r'\(\s*((?:19|20)\d{2})\s*\)').firstMatch(t);
-    if (paren != null) return paren.group(1);
+  static String? publishYearFromPath(String text) =>
+      PathMetadataParser.publishYearFromPath(text);
 
-    final authorYear =
-        RegExp(r'\[\s*[^\]]*?\.((?:19|20)\d{2})\s*\]').firstMatch(t);
-    if (authorYear != null) return authorYear.group(1);
+  static String stripPublishYearFromTitle(String title) =>
+      PathMetadataParser.stripPublishYearFromTitle(title);
 
-    final unclosed = RegExp(r'\[\s*((?:19|20)\d{2})\s*(?=\()').firstMatch(t);
-    if (unclosed != null) return unclosed.group(1);
+  static String? narratorFromPath(String text) =>
+      PathMetadataParser.narratorFromPath(text);
 
-    final leading = RegExp(
-      r'^\s*((?:19|20)\d{2})\s*[-–—.:_|]\s+\S',
-    ).firstMatch(t);
-    if (leading != null) return leading.group(1);
-
-    return null;
-  }
-
-  static String stripPublishYearFromTitle(String title) {
-    var t = title.trim();
-    if (t.isEmpty) return t;
-
-    t = t.replaceAll(RegExp(r'\s*\[\s*[^\]]*?\.((?:19|20)\d{2})\s*\]\s*'), ' ');
-    t = t.replaceAll(RegExp(r'\s*\[\s*(?:19|20)\d{2}\s*\]\s*'), ' ');
-    t = t.replaceAll(RegExp(r'\s*\(\s*(?:19|20)\d{2}\s*\)\s*'), ' ');
-    t = t.replaceAll(RegExp(r'\s*\[\s*(?:19|20)\d{2}\s*(?=\()'), ' ');
-    t = t.replaceFirst(RegExp(r'^\s*(?:19|20)\d{2}\s*[-–—.:_|]\s*'), '');
-
-    t = t.replaceAll(RegExp(r'\s{2,}'), ' ');
-    t = t.replaceAll(RegExp(r'\s*-\s*(?=\()'), ' ');
-    t = t.replaceAll(RegExp(r'\s*-\s*$'), '');
-    t = t.replaceAll(RegExp(r'^\s*-\s*'), '');
-    return t.trim();
-  }
-
-  /// Parenthetical narrator markers, e.g. `(read by Bob Askey)`,
-  /// `(VC1 - read by Frank Muller)`, `(B1 - read by George Holmes)`.
-  static final RegExp _narratorParen = RegExp(
-    r'\(\s*(?:[A-Za-z]{1,8}\d{1,3}\s*[-–—:]\s*)?'
-    r'(?:read|narrated|performed|voiced|told)\s+by\s+([^)]+?)\s*\)',
-    caseSensitive: false,
-  );
-
-  static String? narratorFromPath(String text) {
-    final t = text.trim();
-    if (t.isEmpty) return null;
-    final m = _narratorParen.firstMatch(t);
-    if (m == null) return null;
-    final name = m.group(1)?.trim();
-    if (name == null || name.isEmpty) return null;
-    return name;
-  }
-
-  static String stripNarratorFromTitle(String title) {
-    var t = title.trim();
-    if (t.isEmpty) return t;
-
-    t = t.replaceAll(_narratorParen, ' ');
-    t = t.replaceAll(RegExp(r'\s{2,}'), ' ');
-    t = t.replaceAll(RegExp(r'\s*-\s*$'), '');
-    t = t.replaceAll(RegExp(r'^\s*-\s*'), '');
-    t = t.replaceAll(RegExp(r'\s*-\s*$'), '');
-    return t.trim();
-  }
+  static String stripNarratorFromTitle(String title) =>
+      PathMetadataParser.stripNarratorFromTitle(title);
 
   static String formatDuration(double seconds) {
     final h = (seconds ~/ 3600).toString().padLeft(2, '0');
