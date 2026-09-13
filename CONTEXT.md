@@ -125,3 +125,6 @@ Whenever presenting lists of tickets, always provide the exact absolute file pat
 
 ### Interactive Mention & Link Syntax Rule
 Whenever presenting ticket lists, format ticket paths using `@-mention` syntax (e.g. `@[.scratch/smart-audiobook-player-parity/issues/04-multi-root-library-and-cover-art-resolver.md]`) or `[file.md](file:///path)` links so that clicking them directly completes or inputs the path string in the chat prompt.
+
+### Copyable Command Snippets Rule
+Whenever listing pending tickets, format each ticket with ready-to-copy/click command code blocks (e.g. `/tdd .scratch/smart-audiobook-player-parity/issues/04-multi-root-library-and-cover-art-resolver.md`) so the user can immediately copy and execute the command in the chat box.
