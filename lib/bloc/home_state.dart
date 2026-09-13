@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 import '../models/audiobook.dart';
 import '../models/ebook.dart';
 import '../models/playlist.dart';
+import '../models/category_node.dart';
 
 class BookFetchStatus extends Equatable {
   final String status;
@@ -16,6 +17,7 @@ class HomeState extends Equatable {
   final List<String> scanPaths;
   final List<Audiobook> audiobooks;
   final List<Ebook> ebooks;
+  final List<CategoryNode> categories;
   final List<Playlist> playlists;
   final int? activePlaylistId;
   final bool isLoading;
@@ -29,6 +31,7 @@ class HomeState extends Equatable {
     this.scanPaths = const [],
     this.audiobooks = const [],
     this.ebooks = const [],
+    this.categories = const [],
     this.playlists = const [],
     this.activePlaylistId,
     this.isLoading = false,
@@ -43,6 +46,7 @@ class HomeState extends Equatable {
     List<String>? scanPaths,
     List<Audiobook>? audiobooks,
     List<Ebook>? ebooks,
+    List<CategoryNode>? categories,
     List<Playlist>? playlists,
     int? activePlaylistId,
     bool? isLoading,
@@ -57,6 +61,7 @@ class HomeState extends Equatable {
       scanPaths: scanPaths ?? this.scanPaths,
       audiobooks: audiobooks ?? this.audiobooks,
       ebooks: ebooks ?? this.ebooks,
+      categories: categories ?? this.categories,
       playlists: playlists ?? this.playlists,
       activePlaylistId: clearActivePlaylist ? null : (activePlaylistId ?? this.activePlaylistId),
       isLoading: isLoading ?? this.isLoading,
@@ -77,6 +82,7 @@ class HomeState extends Equatable {
         scanPaths,
         audiobooks,
         ebooks,
+        categories,
         playlists,
         activePlaylistId,
         isLoading,

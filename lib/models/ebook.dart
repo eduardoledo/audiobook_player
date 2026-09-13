@@ -13,6 +13,7 @@ class Ebook {
   final String file; // Path to the actual .epub or .pdf file
   final bool isRead;
   final bool hasMetadataLocally;
+  final int? categoryId;
 
   const Ebook({
     required this.path,
@@ -27,6 +28,7 @@ class Ebook {
     required this.file,
     this.isRead = false,
     this.hasMetadataLocally = false,
+    this.categoryId,
   });
 
   Ebook copyWith({
@@ -42,6 +44,7 @@ class Ebook {
     String? file,
     bool? isRead,
     bool? hasMetadataLocally,
+    int? categoryId,
   }) {
     return Ebook(
       path: path ?? this.path,
@@ -56,6 +59,7 @@ class Ebook {
       file: file ?? this.file,
       isRead: isRead ?? this.isRead,
       hasMetadataLocally: hasMetadataLocally ?? this.hasMetadataLocally,
+      categoryId: categoryId ?? this.categoryId,
     );
   }
 
@@ -76,6 +80,7 @@ class Ebook {
       file: json['file'] as String,
       isRead: json['isRead'] as bool? ?? false,
       hasMetadataLocally: json['hasMetadataLocally'] as bool? ?? false,
+      categoryId: json['categoryId'] as int?,
     );
   }
 
@@ -92,6 +97,7 @@ class Ebook {
         'file': file,
         'isRead': isRead,
         'hasMetadataLocally': hasMetadataLocally,
+        'categoryId': categoryId,
       };
 
   bool get isPdf => file.toLowerCase().endsWith('.pdf');

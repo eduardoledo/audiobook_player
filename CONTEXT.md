@@ -131,6 +131,9 @@ A database persistence model using a dedicated SQLite `categories` table with `l
 ### Multi-Depth Book Node Placement
 The library architecture rule allowing any `Audiobook` or `Ebook` to hold a foreign key `category_id` pointing to a node at any level of depth in the `categories` tree, enabling books to reside under intermediate parent categories (e.g. directly under an Author) as well as leaf categories (e.g. under a specific Saga Era).
 
+### Nested Set UI Tree Rendering
+The UI tree construction policy where `HomeScreen` and `HomeCubit` build the directory tree view directly from the SQLite `categories` Nested Set table using `lft` ordering and `parent_id` relationships, attaching books to their associated `CategoryNode` via `category_id`.
+
 ---
 
 ## Development & Workflow Discipline

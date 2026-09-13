@@ -946,7 +946,11 @@ class LibraryStorage {
     return updatedCount;
   }
 
-  // --- Nested Set Category Tree Operations ---
+  Future<List<CategoryNode>> getAllCategories() async {
+    final db = await database;
+    final maps = await db.query('categories', orderBy: 'lft ASC');
+    return maps.map((m) => CategoryNode.fromMap(m)).toList();
+  }
 
   Future<int> insertCategory(CategoryNode node) async {
     final db = await database;

@@ -170,11 +170,13 @@ class HomeCubit extends Cubit<HomeState> {
       final paths = await _storage.getScanPaths();
       final books = await _storage.getAudiobooks();
       final ebooks = await _storage.getEbooks();
+      final categories = await _storage.getAllCategories();
       final playlists = await _storage.getPlaylists();
       emit(state.copyWith(
         scanPaths: paths,
         audiobooks: books,
         ebooks: ebooks,
+        categories: categories,
         playlists: playlists,
         isLoading: false,
       ));

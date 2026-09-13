@@ -10,6 +10,7 @@ import '../bloc/home_state.dart';
 import '../dialogs/path_structure_selector_dialog.dart';
 import '../models/audiobook.dart';
 import '../models/ebook.dart';
+import '../models/category_node.dart';
 import '../services/audiobook_scanner.dart';
 import '../services/library_storage.dart';
 import '../service_locator.dart';
@@ -1620,7 +1621,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
   ) {
     if (books.isEmpty) return const SizedBox.shrink();
 
-    final root = _buildDirectoryTree(books, state.scanPaths);
+    final root = _buildDirectoryTree(books, state.scanPaths, state.categories);
 
     return Column(
       children: [
@@ -1647,10 +1648,60 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
     );
   }
 
-  /// Builds a folder tree using book paths as the template:
-  /// `Autor / [Universo] / [Saga] / Libro` (via [AudiobookScanner.parseDirPath]).
-  /// The audiobook/ebook is always the leaf.
+  /// Builds a folder tree using Nested Set categories if present, falling back to
+  /// path templates (`Autor / [Universo] / [Saga] / Libro`).
   _DirectoryNode _buildDirectoryTree(
+    List<dynamic> books,
+    List<String> scanPaths,
+    List<CategoryNode> categories,
+  ) {
+    final root = _DirectoryNode('Root');
+
+    if (categories.isNotEmpty) {
+      final nodeMap = <int, _DirectoryNode>{};
+
+      // 1. Create directory node for each category
+      for (final cat in categories) {
+        final dirNode = _DirectoryNode(cat.name);
+        if (cat.id != null) nodeMap[cat.id!] = dirNode;
+
+        if (cat.parentId != null && nodeMap.containsKey(cat.parentId)) {
+          nodeMap[cat.parentId]!.subdirectories[cat.name] = dirNode;
+        } else {
+          root.subdirectories[cat.name] = dirNode;
+        }
+      }
+
+      // 2. Attach books matching categoryId or path prefix
+      final unassigned = <dynamic>[];
+      for (final book in books) {
+        final catId = book is Audiobook
+            ? book.categoryId
+            : (book is Ebook ? book.categoryId : null);
+
+        if (catId != null && nodeMap.containsKey(catId)) {
+          nodeMap[catId]!.books.add(book);
+        } else {
+          unassigned.add(book);
+        }
+      }
+
+      if (unassigned.isNotEmpty) {
+        final fallbackTree = _buildDirectoryTreeFallback(unassigned, scanPaths);
+        for (final entry in fallbackTree.subdirectories.entries) {
+          root.subdirectories.putIfAbsent(entry.key, () => entry.value);
+        }
+        root.books.addAll(fallbackTree.books);
+      }
+
+      _sortDirectoryTree(root);
+      return root;
+    }
+
+    return _buildDirectoryTreeFallback(books, scanPaths);
+  }
+
+  _DirectoryNode _buildDirectoryTreeFallback(
     List<dynamic> books,
     List<String> scanPaths,
   ) {
