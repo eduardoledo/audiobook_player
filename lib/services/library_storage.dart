@@ -9,6 +9,7 @@ import '../models/ebook.dart';
 import '../models/bookmark.dart';
 import '../models/playlist.dart';
 import '../models/path_pattern_rule.dart';
+import '../models/category_node.dart';
 
 /// Persists scan paths and audiobook library using SQLite.
 class LibraryStorage {
@@ -104,7 +105,7 @@ class LibraryStorage {
     
     _db = await openDatabase(
       path,
-      version: 12,
+      version: 13,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE scan_paths (
@@ -114,13 +115,26 @@ class LibraryStorage {
         await db.execute('''
           CREATE TABLE audiobooks (
             path TEXT PRIMARY KEY,
+            category_id INTEGER,
             json_data TEXT
           )
         ''');
         await db.execute('''
           CREATE TABLE IF NOT EXISTS ebooks (
             file TEXT PRIMARY KEY,
+            category_id INTEGER,
             json_data TEXT
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            lft INTEGER NOT NULL,
+            rgt INTEGER NOT NULL,
+            depth INTEGER NOT NULL,
+            parent_id INTEGER,
+            path_prefix TEXT UNIQUE
           )
         ''');
         await db.execute('''
@@ -200,6 +214,25 @@ class LibraryStorage {
         ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 13) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS categories (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              lft INTEGER NOT NULL,
+              rgt INTEGER NOT NULL,
+              depth INTEGER NOT NULL,
+              parent_id INTEGER,
+              path_prefix TEXT UNIQUE
+            )
+          ''');
+          try {
+            await db.execute('ALTER TABLE audiobooks ADD COLUMN category_id INTEGER');
+          } catch (_) {}
+          try {
+            await db.execute('ALTER TABLE ebooks ADD COLUMN category_id INTEGER');
+          } catch (_) {}
+        }
         if (oldVersion < 12) {
           try {
             await db.execute('ALTER TABLE bookmarks ADD COLUMN text_note TEXT');
@@ -911,5 +944,92 @@ class LibraryStorage {
     }
 
     return updatedCount;
+  }
+
+  // --- Nested Set Category Tree Operations ---
+
+  Future<int> insertCategory(CategoryNode node) async {
+    final db = await database;
+    final id = await db.insert(
+      'categories',
+      node.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    await rebuildNestedSet();
+    return id;
+  }
+
+  Future<List<CategoryNode>> getCategoriesSubtree(int rootId) async {
+    final db = await database;
+    final rootQuery = await db.query(
+      'categories',
+      where: 'id = ?',
+      whereArgs: [rootId],
+    );
+    if (rootQuery.isEmpty) return [];
+
+    final root = CategoryNode.fromMap(rootQuery.first);
+    final maps = await db.query(
+      'categories',
+      where: 'lft BETWEEN ? AND ?',
+      whereArgs: [root.lft, root.rgt],
+      orderBy: 'lft ASC',
+    );
+    return maps.map((m) => CategoryNode.fromMap(m)).toList();
+  }
+
+  Future<void> rebuildNestedSet() async {
+    final db = await database;
+    final maps = await db.query('categories');
+    final allNodes = maps.map((m) => CategoryNode.fromMap(m)).toList();
+
+    if (allNodes.isEmpty) return;
+
+    final Map<int?, List<CategoryNode>> childrenMap = {};
+    for (final node in allNodes) {
+      childrenMap.putIfAbsent(node.parentId, () => []).add(node);
+    }
+
+    // Sort children alphabetically for predictable ordering
+    for (final children in childrenMap.values) {
+      children.sort((a, b) => a.name.compareTo(b.name));
+    }
+
+    var currentCounter = 1;
+    final List<CategoryNode> updatedNodes = [];
+
+    void dfs(CategoryNode current, int currentDepth) {
+      final lft = currentCounter++;
+      final children = childrenMap[current.id] ?? [];
+      for (final child in children) {
+        dfs(child, currentDepth + 1);
+      }
+      final rgt = currentCounter++;
+      updatedNodes.add(current.copyWith(
+        lft: lft,
+        rgt: rgt,
+        depth: currentDepth,
+      ));
+    }
+
+    final rootNodes = childrenMap[null] ?? [];
+    for (final root in rootNodes) {
+      dfs(root, 0);
+    }
+
+    await db.transaction((txn) async {
+      for (final node in updatedNodes) {
+        await txn.update(
+          'categories',
+          {
+            'lft': node.lft,
+            'rgt': node.rgt,
+            'depth': node.depth,
+          },
+          where: 'id = ?',
+          whereArgs: [node.id],
+        );
+      }
+    });
   }
 }

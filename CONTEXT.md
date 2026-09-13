@@ -125,6 +125,12 @@ The library rendering and parsing rule where standalone audiobooks lacking saga/
 ### Hierarchy Level Deduplication
 The path parsing rule enforcing that if a lower-level hierarchy node (`saga`, `era`, `bookTitle`) matches a higher-level parent node (`author`, `universe`, `saga`) after string normalization, the lower-level field is set to `null` to prevent redundant nested category subfolders.
 
+### Nested Set Category Hierarchy
+A database persistence model using a dedicated SQLite `categories` table with `lft`, `rgt`, `depth`, and `parent_id` attributes. This structure represents arbitrary-depth library categories (Author, Universe, Saga, Sub-series, Era) and enables immediate subtree traversal queries with `WHERE lft BETWEEN parent.lft AND parent.rgt`.
+
+### Multi-Depth Book Node Placement
+The library architecture rule allowing any `Audiobook` or `Ebook` to hold a foreign key `category_id` pointing to a node at any level of depth in the `categories` tree, enabling books to reside under intermediate parent categories (e.g. directly under an Author) as well as leaf categories (e.g. under a specific Saga Era).
+
 ---
 
 ## Development & Workflow Discipline

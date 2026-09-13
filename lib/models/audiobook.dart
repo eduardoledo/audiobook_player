@@ -28,6 +28,7 @@ class Audiobook {
   final int totalChapters;
   final List<Chapter> chapters;
   final bool isRead;
+  final int? categoryId;
 
   const Audiobook({
     // required this.id,
@@ -51,6 +52,7 @@ class Audiobook {
     required this.totalChapters,
     required this.chapters,
     this.isRead = false,
+    this.categoryId,
   });
 
   factory Audiobook.fromJson(Map<String, dynamic> json, String basePath) {
@@ -105,6 +107,7 @@ class Audiobook {
       totalChapters: json['totalChapters'] as int? ?? chapters.length,
       chapters: chapters,
       isRead: json['isRead'] as bool? ?? false,
+      categoryId: json['categoryId'] as int?,
     );
   }
 
@@ -128,6 +131,7 @@ class Audiobook {
     int? totalChapters,
     List<Chapter>? chapters,
     bool? isRead,
+    int? categoryId,
   }) {
     return Audiobook(
       path: path,
@@ -150,6 +154,7 @@ class Audiobook {
       totalChapters: totalChapters ?? this.totalChapters,
       chapters: chapters ?? this.chapters,
       isRead: isRead ?? this.isRead,
+      categoryId: categoryId ?? this.categoryId,
     );
   }
 
@@ -178,6 +183,7 @@ class Audiobook {
         'totalChapters': totalChapters,
         'chapters': chapters.map((c) => c.toJson()).toList(),
         'isRead': isRead,
+        if (categoryId != null) 'categoryId': categoryId,
       };
 }
 
