@@ -131,3 +131,6 @@ Whenever listing pending tickets, format each ticket with ready-to-copy/click co
 
 ### Post-Implementation Code Review Prompt Rule
 Upon completing any implementation ticket (with tests passing and commit/push complete), the agent must explicitly ask the user if they wish to initiate a `/code-review` session to review changes against repository standards and the feature spec.
+
+### Zero Current Problems Quality Invariant
+Every code implementation, refactor, or hotfix must strictly leave `flutter analyze lib/` and `@current_problems` 100% clean (0 errors, 0 warnings). Code is considered invalid and non-commit-ready if any analyzer issues remain unresolved.
