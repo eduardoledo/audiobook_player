@@ -99,3 +99,17 @@ An advanced chapter detection feature combining audio silence scanning with eBoo
 - Pause 15–60 min $\rightarrow$ 10s rewind (10,000 ms)
 - Pause 1–8 hours $\rightarrow$ 20s rewind (20,000 ms)
 - Pause > 8 hours $\rightarrow$ 30s rewind (30,000 ms)
+
+---
+
+## Path Structure Mapping
+
+### Segment Path Mapper
+A user-configurable positional mapping rule that maps folder path segments (e.g., segment 0 = Author, segment 1 = Universe, segment 2 = Saga, segment 3 = Title) to override automatic pattern detection for custom directory layouts.
+
+---
+
+## Development & Workflow Discipline
+
+### Post-Implementation Commit & Push Rule
+The operational mandate requiring the agent to prepare a clean git commit message and request explicit user confirmation before running `git commit` and `git push` upon completing any implementation ticket or architectural milestone.

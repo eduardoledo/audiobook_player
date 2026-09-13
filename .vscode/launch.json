@@ -8,6 +8,12 @@
             "name": "Dart & Flutter",
             "request": "launch",
             "type": "dart"
+        },
+        {
+            "name": "Dart & Flutter (Wi-Fi Device)",
+            "request": "launch",
+            "type": "dart",
+            "preLaunchTask": "Flutter Wi-Fi: Ensure Connected (Pre-Launch)"
         }
     ]
 }

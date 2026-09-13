@@ -5,10 +5,10 @@ A dedicated `SmartSleepTimerService` supporting traditional countdown duration/e
 
 **Blocked by:** 01-per-book-state-and-short-rewind
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Sleep timer countdown logic with pause trigger upon expiration
-- [ ] Motion detection listening enabled exclusively in the last 2 minutes of countdown
-- [ ] Accelerometer shake event resets countdown timer to initial or configured extension duration
-- [ ] Sensitivity threshold setting (Low, Medium, High)
-- [ ] Unit & service tests verifying timer expiration and motion reset behavior
+- [x] Sleep timer countdown logic with pause trigger upon expiration
+- [x] Motion detection listening enabled exclusively in the last 2 minutes of countdown
+- [x] Accelerometer shake event resets countdown timer to initial or configured extension duration
+- [x] Sensitivity threshold setting (Low, Medium, High)
+- [x] Unit & service tests verifying timer expiration and motion reset behavior

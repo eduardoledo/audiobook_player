@@ -5,9 +5,9 @@ A persistent `JumpHistory` LIFO stack (max 20 entries) per book recording positi
 
 **Blocked by:** 01-per-book-state-and-short-rewind
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `JumpHistory` repository storing timestamp jumps in SQLite per `Audiobook`
-- [ ] Manual seek, chapter skip, or scrub pushes previous position onto the jump stack
-- [ ] "Undo Jump" button pops the stack and restores playback position instantly
-- [ ] Unit tests for LIFO stack eviction limits (20 items max) and persistence
+- [x] `JumpHistory` repository storing timestamp jumps in SQLite per `Audiobook`
+- [x] Manual seek, chapter skip, or scrub pushes previous position onto the jump stack
+- [x] "Undo Jump" button pops the stack and restores playback position instantly
+- [x] Unit tests for LIFO stack eviction limits (20 items max) and persistence

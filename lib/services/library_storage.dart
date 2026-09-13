@@ -68,6 +68,14 @@ class LibraryStorage {
             pitch_stabilized INTEGER
           )
         ''');
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS jump_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_path TEXT NOT NULL,
+            position_ms INTEGER NOT NULL,
+            timestamp INTEGER NOT NULL
+          )
+        ''');
       },
     );
     
@@ -93,7 +101,7 @@ class LibraryStorage {
     
     _db = await openDatabase(
       path,
-      version: 10,
+      version: 11,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE scan_paths (
@@ -176,8 +184,26 @@ class LibraryStorage {
             last_played_timestamp INTEGER
           )
         ''');
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS jump_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_path TEXT NOT NULL,
+            position_ms INTEGER NOT NULL,
+            timestamp INTEGER NOT NULL
+          )
+        ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 11) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS jump_history (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              book_path TEXT NOT NULL,
+              position_ms INTEGER NOT NULL,
+              timestamp INTEGER NOT NULL
+            )
+          ''');
+        }
         if (oldVersion < 10) {
           await db.execute('''
             CREATE TABLE IF NOT EXISTS book_playback_state (
@@ -187,6 +213,14 @@ class LibraryStorage {
               playback_speed REAL,
               volume_gain REAL,
               last_played_timestamp INTEGER
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS jump_history (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              book_path TEXT NOT NULL,
+              position_ms INTEGER NOT NULL,
+              timestamp INTEGER NOT NULL
             )
           ''');
         }
@@ -755,5 +789,72 @@ class LibraryStorage {
       return BookPlaybackState.fromMap(maps.first, bookPath);
     }
     return BookPlaybackState(bookPath: bookPath);
+  }
+
+  Future<void> pushJump({required String bookPath, required int positionMs}) async {
+    final db = await database;
+    await db.insert('jump_history', {
+      'book_path': bookPath,
+      'position_ms': positionMs,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+
+    // Enforce 20 item limit per book
+    final countMaps = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM jump_history WHERE book_path = ?',
+      [bookPath],
+    );
+    final count = Sqflite.firstIntValue(countMaps) ?? 0;
+    if (count > 20) {
+      final oldestToKeep = await db.query(
+        'jump_history',
+        columns: ['id'],
+        where: 'book_path = ?',
+        whereArgs: [bookPath],
+        orderBy: 'id DESC',
+        limit: 1,
+        offset: 19,
+      );
+      if (oldestToKeep.isNotEmpty) {
+        final cutoffId = oldestToKeep.first['id'] as int;
+        await db.delete(
+          'jump_history',
+          where: 'book_path = ? AND id < ?',
+          whereArgs: [bookPath, cutoffId],
+        );
+      }
+    }
+  }
+
+  Future<int?> popJump({required String bookPath}) async {
+    final db = await database;
+    final maps = await db.query(
+      'jump_history',
+      where: 'book_path = ?',
+      whereArgs: [bookPath],
+      orderBy: 'id DESC',
+      limit: 1,
+    );
+
+    if (maps.isEmpty) return null;
+
+    final latest = maps.first;
+    final id = latest['id'] as int;
+    final positionMs = latest['position_ms'] as int;
+
+    await db.delete('jump_history', where: 'id = ?', whereArgs: [id]);
+    return positionMs;
+  }
+
+  Future<List<int>> getJumpHistory({required String bookPath}) async {
+    final db = await database;
+    final maps = await db.query(
+      'jump_history',
+      columns: ['position_ms'],
+      where: 'book_path = ?',
+      whereArgs: [bookPath],
+      orderBy: 'id DESC',
+    );
+    return maps.map((m) => m['position_ms'] as int).toList();
   }
 }
