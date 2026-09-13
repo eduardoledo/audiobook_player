@@ -128,3 +128,6 @@ Whenever presenting ticket lists, format ticket paths using `@-mention` syntax (
 
 ### Copyable Command Snippets Rule
 Whenever listing pending tickets, format each ticket with ready-to-copy/click command code blocks (e.g. `/tdd .scratch/smart-audiobook-player-parity/issues/04-multi-root-library-and-cover-art-resolver.md`) so the user can immediately copy and execute the command in the chat box.
+
+### Post-Implementation Code Review Prompt Rule
+Upon completing any implementation ticket (with tests passing and commit/push complete), the agent must explicitly ask the user if they wish to initiate a `/code-review` session to review changes against repository standards and the feature spec.
