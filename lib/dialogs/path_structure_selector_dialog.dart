@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import '../models/path_pattern_rule.dart';
 import '../service_locator.dart';
 import '../services/library_storage.dart';
+import '../services/path_metadata_parser.dart';
 
 class PathStructureSelectorDialog extends StatefulWidget {
   final String rootPath;
@@ -47,10 +48,16 @@ class _PathStructureSelectorDialogState
     }
 
     final root = p.normalize(matchedRoot);
-    String samplePath = p.normalize(widget.rootPath);
+    final targetSearchPath = p.normalize(widget.rootPath);
+    String samplePath = targetSearchPath;
 
     try {
-      final dir = Directory(samplePath);
+      // First scan starting from targetSearchPath, or fallback to root if targetSearchPath doesn't exist/has no audio
+      Directory dir = Directory(targetSearchPath);
+      if (!await dir.exists()) {
+        dir = Directory(root);
+      }
+
       if (await dir.exists()) {
         final entities = await dir.list(recursive: true).toList();
         final firstAudio = entities.firstWhere(
@@ -62,12 +69,14 @@ class _PathStructureSelectorDialogState
         );
 
         if (firstAudio is File) {
-          samplePath = p.dirname(firstAudio.path);
+          var parentDir = firstAudio.parent;
+          if (PathMetadataParser.looksLikeDiscPartFolder(p.basename(parentDir.path))) {
+            parentDir = parentDir.parent;
+          }
+          samplePath = parentDir.path;
         } else {
-          // If no audio file found directly or samplePath is root, find first sub-directory with content
           final subDirs = entities.whereType<Directory>().toList();
           if (subDirs.isNotEmpty) {
-            // Sort to get deepest or first structured path
             subDirs.sort((a, b) => b.path.length.compareTo(a.path.length));
             samplePath = subDirs.first.path;
           }
@@ -76,18 +85,16 @@ class _PathStructureSelectorDialogState
     } catch (_) {}
 
     // Compute full path relative to scan root
-    final relativeFromRoot = samplePath.startsWith(root)
-        ? (samplePath == root
-            ? ''
-            : samplePath.substring(root.endsWith(p.separator)
-                ? root.length
-                : root.length + 1))
-        : p.basename(samplePath);
+    final relativeFromRoot = p.relative(samplePath, from: root);
 
-    final segments = p
+    var segments = p
         .split(relativeFromRoot)
-        .where((s) => s.isNotEmpty)
+        .where((s) => s.isNotEmpty && s != '.')
         .toList();
+
+    if (segments.isEmpty) {
+      segments = [p.basename(root)];
+    }
 
     // Check if rule already saved
     final existingRules = await _storage.getPathPatternRules();
@@ -162,8 +169,8 @@ class _PathStructureSelectorDialogState
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(color: const Color(0xFFE8B86D).withValues(alpha: 0.3)),
                     ),
-                    child: Text(
-                      relativeDisplayPath.isEmpty ? '(Directorio Raíz)' : relativeDisplayPath,
+                    child: SelectableText(
+                      relativeDisplayPath.isEmpty ? widget.rootPath : relativeDisplayPath,
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
