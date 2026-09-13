@@ -172,6 +172,15 @@ class PathMetadataParser {
     final t = text.trim();
     if (t.isEmpty) return null;
 
+    final curly = RegExp(r'\{\s*((?:19|20)\d{2})\s*\}').firstMatch(t);
+    if (curly != null) return curly.group(1);
+
+    final labeled = RegExp(
+      r'\(\s*(?:year|año)\s+((?:19|20)\d{2})\s*\)',
+      caseSensitive: false,
+    ).firstMatch(t);
+    if (labeled != null) return labeled.group(1);
+
     final bracket = RegExp(r'\[\s*((?:19|20)\d{2})\s*\]').firstMatch(t);
     if (bracket != null) return bracket.group(1);
 
@@ -185,6 +194,9 @@ class PathMetadataParser {
     final unclosed = RegExp(r'\[\s*((?:19|20)\d{2})\s*(?=\()').firstMatch(t);
     if (unclosed != null) return unclosed.group(1);
 
+    final delimited = RegExp(r'(?:[._])((?:19|20)\d{2})(?:[._])').firstMatch(t);
+    if (delimited != null) return delimited.group(1);
+
     final leading = RegExp(
       r'^\s*((?:19|20)\d{2})\s*[-–—.:_|]\s+\S',
     ).firstMatch(t);
@@ -193,14 +205,27 @@ class PathMetadataParser {
     return null;
   }
 
+  static bool hasMultiplePublishYearsInPath(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return false;
+    final matches = RegExp(r'\b(?:19|20)\d{2}\b').allMatches(t);
+    return matches.length > 1;
+  }
+
   static String stripPublishYearFromTitle(String title) {
     var t = title.trim();
     if (t.isEmpty) return t;
 
+    t = t.replaceAll(RegExp(r'\s*\{\s*(?:19|20)\d{2}\s*\}\s*'), ' ');
+    t = t.replaceAll(
+      RegExp(r'\s*\(\s*(?:year|año)\s+(?:19|20)\d{2}\s*\)\s*', caseSensitive: false),
+      ' ',
+    );
     t = t.replaceAll(RegExp(r'\s*\[\s*[^\]]*?\.((?:19|20)\d{2})\s*\]\s*'), ' ');
     t = t.replaceAll(RegExp(r'\s*\[\s*(?:19|20)\d{2}\s*\]\s*'), ' ');
     t = t.replaceAll(RegExp(r'\s*\(\s*(?:19|20)\d{2}\s*\)\s*'), ' ');
     t = t.replaceAll(RegExp(r'\s*\[\s*(?:19|20)\d{2}\s*(?=\()'), ' ');
+    t = t.replaceAll(RegExp(r'(?:[._])(?:19|20)\d{2}(?:[._])'), ' ');
     t = t.replaceFirst(RegExp(r'^\s*(?:19|20)\d{2}\s*[-–—.:_|]\s*'), '');
 
     t = t.replaceAll(RegExp(r'\s{2,}'), ' ');

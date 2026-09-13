@@ -62,6 +62,21 @@ void main() {
       expect(meta.saga, equals('Mistborn'));
     });
 
+    test('extracts publication year from extended patterns and detects multiple years', () {
+      expect(PathMetadataParser.publishYearFromPath('El Nombre del Viento {2007}'), equals('2007'));
+      expect(PathMetadataParser.publishYearFromPath('Title (Year 1999)'), equals('1999'));
+      expect(PathMetadataParser.publishYearFromPath('Title (Año 2015)'), equals('2015'));
+      expect(PathMetadataParser.publishYearFromPath('Title_2021_Audiobook'), equals('2021'));
+      expect(PathMetadataParser.publishYearFromPath('Title.2018.mp3'), equals('2018'));
+
+      expect(PathMetadataParser.stripPublishYearFromTitle('El Nombre del Viento {2007}'), equals('El Nombre del Viento'));
+      expect(PathMetadataParser.stripPublishYearFromTitle('Title (Year 1999)'), equals('Title'));
+      expect(PathMetadataParser.stripPublishYearFromTitle('Title_2021_Audiobook'), equals('Title Audiobook'));
+
+      expect(PathMetadataParser.hasMultiplePublishYearsInPath('1984 (2020)'), isTrue);
+      expect(PathMetadataParser.hasMultiplePublishYearsInPath('The Hobbit (1937)'), isFalse);
+    });
+
     test('deduplicates hierarchy levels when lower segment matches parent level name', () {
       const parser = PathMetadataParser();
       final meta = parser.parsePath('Brandon Sanderson/Cosmere/Cosmere/The Final Empire');
