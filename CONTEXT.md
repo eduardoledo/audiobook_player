@@ -113,3 +113,6 @@ A user-configurable positional mapping rule that maps folder path segments (e.g.
 
 ### Post-Implementation Commit & Push Rule
 The operational mandate requiring the agent to prepare a clean git commit message and request explicit user confirmation before running `git commit` and `git push` upon completing any implementation ticket or architectural milestone.
+
+### Post-Commit Ticket Status Report Rule
+Upon completing a ticket implementation, obtaining user approval, and executing the git commit/push, the agent must immediately display an updated list of all remaining pending tickets on the frontier.
