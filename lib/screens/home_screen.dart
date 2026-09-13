@@ -735,7 +735,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                             ),
                             children: books.map((book) {
                               final prefix = book.seriesSequence != null
-                                  ? 'Book ${book.seriesSequence} - '
+                                  ? '${book.seriesSequence} - '
                                   : (book.universeOrder != null
                                         ? '${book.universeOrder} - '
                                         : (book.publishYear != null
@@ -1184,7 +1184,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                             ),
                             children: books.map((book) {
                               final prefix = book.seriesSequence != null
-                                  ? 'Book ${book.seriesSequence} - '
+                                  ? '${book.seriesSequence} - '
                                   : (book.publishYear != null
                                         ? '${book.publishYear} - '
                                         : '');
