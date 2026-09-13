@@ -17,6 +17,7 @@ import '../utils/pdf_metadata_parser.dart';
 import '../models/scan_message.dart';
 import '../service_locator.dart';
 import 'library_storage.dart';
+import 'path_metadata_parser.dart';
 
 /// Parsed metadata from directory path relative to the scan root.
 /// Intermediate folders without audio only contribute Author/Universe/Saga;
@@ -78,128 +79,22 @@ class AudiobookScanner {
   static const List<String> _ebookExtensions = ['.epub', '.pdf'];
 
   /// Saga era folder (`Era 1`) — not a disc/CD part of one book.
-  static bool looksLikeEraFolder(String name) {
-    final n = name.trim();
-    return RegExp(
-      r'^(?:eras?|era)\s*[\s._|-]*\s*(?:\d+|[a-zA-Z][a-zA-Z0-9_-]*)$',
-      caseSensitive: false,
-    ).hasMatch(n);
-  }
+  static bool looksLikeEraFolder(String name) =>
+      PathMetadataParser.looksLikeEraFolder(name);
 
   /// Disc/CD/part/prologue folders for a single multipart book (excludes eras).
-  static bool looksLikeDiscPartFolder(String name) {
-    final n = name.trim();
-    if (looksLikeEraFolder(n)) return false;
-    if (RegExp(
-      r'^(cd|disc|disk|part|parte|disco|libro|acto|act|vol|volume|tomo|chapter|capitulo|capítulo|section|seccion|sección|ch|cap)[\s._|-]*\d+',
-      caseSensitive: false,
-    ).hasMatch(n)) {
-      return true;
-    }
-    if (RegExp(
-      r'^(cd|disc|disk|part|parte|disco|libro|acto|act|vol|volume|tomo|chapter|capitulo|capítulo|section|seccion|sección)[\s|_-]+[a-zA-Z0-9_-]+$',
-      caseSensitive: false,
-    ).hasMatch(n)) {
-      return true;
-    }
-    if (RegExp(
-      r'^(?:\d{1,3}\s*[-.|:_)\s]+)?(?:part|parte|chapter|capitulo|capítulo|section|seccion|sección)\s+(?:[ivxlcdm]+|\d+)\b',
-      caseSensitive: false,
-    ).hasMatch(n)) {
-      return true;
-    }
-    if (_looksLikePrologueOrEpilogueFolder(n)) return true;
-    if (RegExp(
-      r'^(?:[A-Za-z0-9]{1,4}\s*[-.|:_)\s]+)'
-      r'(?:pr[oó]logo|prologue|ep[ií]logo|epilogue|intro(?:duction)?|proem|preface|foreword)\b',
-      caseSensitive: false,
-    ).hasMatch(n)) {
-      return true;
-    }
-    return RegExp(r'^\d{1,3}$').hasMatch(n);
-  }
+  static bool looksLikeDiscPartFolder(String name) =>
+      PathMetadataParser.looksLikeDiscPartFolder(name);
 
   /// Part/disc/era/prologue/epilogue folder under a multiparte book or saga.
   /// Numbered book titles like "01 - The Final Empire" are NOT parts.
-  static bool looksLikePartFolder(String name) {
-    return looksLikeEraFolder(name) || looksLikeDiscPartFolder(name);
-  }
-
-  static bool _looksLikePrologueOrEpilogueFolder(String name) {
-    return RegExp(
-      r'^(?:'
-      r'(?:[A-Za-z0-9]{1,4}\s*[-._)\s]+)?'
-      r'(?:pr[oó]logo|prologue|ep[ií]logo|epilogue|intro(?:duction)?|proem|preface|foreword)'
-      r'|'
-      r'(?:pr[oó]logo|prologue|ep[ií]logo|epilogue|intro(?:duction)?|proem|preface|foreword)'
-      r'(?:\s*[-._)\s]*\d{1,3})?'
-      r')$',
-      caseSensitive: false,
-    ).hasMatch(name.trim());
-  }
+  static bool looksLikePartFolder(String name) =>
+      PathMetadataParser.looksLikePartFolder(name);
 
   /// Sort order of a part folder within a book.
-  ///
-  /// - Prólogo / Prologue → `0` (or the explicit number if present)
-  /// - CD1 / Disc 2 / 01 / Parte III → the extracted number
-  /// - Epílogo / Epilogue → `10000` (+ number if present)
-  /// - Unknown → `null`
-  static int? partOrderFromFolderName(String name) {
-    final n = name.trim();
-    if (n.isEmpty) return null;
+  static int? partOrderFromFolderName(String name) =>
+      PathMetadataParser.partOrderFromFolderName(name);
 
-    final isPrologue = RegExp(
-      r'pr[oó]logo|prologue|intro(?:duction)?|proem|preface|foreword',
-      caseSensitive: false,
-    ).hasMatch(n);
-    final isEpilogue =
-        RegExp(r'ep[ií]logo|epilogue', caseSensitive: false).hasMatch(n);
-
-    final partNum = RegExp(
-      r'(?:cd|disc|disk|part|parte|disco|libro|era|eras|acto|act|vol|volume|tomo|chapter|capitulo|capítulo|section|seccion|sección|ch|cap)'
-      r'[\s._|-]*(\d{1,4}|[ivxlcdm]+)\b',
-      caseSensitive: false,
-    ).firstMatch(n);
-    int? base;
-    if (partNum != null) {
-      final raw = partNum.group(1)!;
-      base = int.tryParse(raw) ?? _romanToInt(raw);
-    }
-    base ??= () {
-      final numMatch = RegExp(r'(\d{1,4})').firstMatch(n);
-      return numMatch != null ? int.tryParse(numMatch.group(1)!) : null;
-    }();
-
-    if (isPrologue) return base ?? 0;
-    if (isEpilogue) return 10000 + (base ?? 0);
-    return base;
-  }
-
-  static int? _romanToInt(String roman) {
-    const values = <String, int>{
-      'i': 1,
-      'v': 5,
-      'x': 10,
-      'l': 50,
-      'c': 100,
-      'd': 500,
-      'm': 1000,
-    };
-    final s = roman.toLowerCase().trim();
-    if (s.isEmpty || !RegExp(r'^[ivxlcdm]+$').hasMatch(s)) return null;
-    var total = 0;
-    var prev = 0;
-    for (var i = s.length - 1; i >= 0; i--) {
-      final v = values[s[i]]!;
-      if (v < prev) {
-        total -= v;
-      } else {
-        total += v;
-        prev = v;
-      }
-    }
-    return total > 0 ? total : null;
-  }
 
   static String? _nonEmpty(String? value) {
     final trimmed = value?.trim();
@@ -501,6 +396,7 @@ class AudiobookScanner {
     String dirPath,
     String baseDirectoryPath, {
     PathPatternRule? customRule,
+    SegmentPathMapping? segmentMapping,
   }) {
     final base = p.normalize(baseDirectoryPath);
     final dir = p.normalize(dirPath);
@@ -509,6 +405,18 @@ class AudiobookScanner {
         dir.substring(base.endsWith(p.separator) ? base.length : base.length + 1);
     final segments = p.split(relative).where((s) => s.isNotEmpty).toList();
     if (segments.isEmpty) return null;
+
+    if (segmentMapping != null) {
+      final parsed = PathMetadataParser(segmentMapping: segmentMapping).parsePath(relative);
+      return DirPathMetadata(
+        author: parsed.author,
+        universe: parsed.universe,
+        saga: parsed.saga,
+        era: parsed.era,
+        bookTitle: parsed.bookTitle,
+        narrator: parsed.narrator,
+      );
+    }
 
     String? positionFromTitle(String title) => rawOrderPrefix(title);
 

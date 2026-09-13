@@ -1,15 +1,5 @@
 import '../models/path_pattern_rule.dart';
-
-/// Enum representing the metadata field assigned to a path segment.
-enum PathSegmentRole {
-  author,
-  universe,
-  saga,
-  era,
-  bookTitle,
-  narrator,
-  ignore,
-}
+export '../models/path_pattern_rule.dart' show PathSegmentRole;
 
 /// User-configured positional mapping rule for folder segments.
 class SegmentPathMapping {
@@ -118,24 +108,58 @@ class PathMetadataParser {
   static int? partOrderFromFolderName(String name) {
     final n = name.trim();
     if (n.isEmpty) return null;
-    final lower = n.toLowerCase();
 
-    if (_looksLikePrologueOrEpilogueFolder(n)) {
-      if (lower.contains('prolog') || lower.contains('prólog') || lower.contains('prologue') || lower.contains('proem')) {
-        final m = RegExp(r'\d+').firstMatch(n);
-        return m != null ? int.tryParse(m.group(0)!) ?? 0 : 0;
-      }
-      if (lower.contains('epilog') || lower.contains('epílog') || lower.contains('epilogue')) {
-        final m = RegExp(r'\d+').firstMatch(n);
-        return 10000 + (m != null ? (int.tryParse(m.group(0)!) ?? 0) : 0);
+    final isPrologue = RegExp(
+      r'pr[oó]logo|prologue|intro(?:duction)?|proem|preface|foreword',
+      caseSensitive: false,
+    ).hasMatch(n);
+    final isEpilogue =
+        RegExp(r'ep[ií]logo|epilogue', caseSensitive: false).hasMatch(n);
+
+    final partNum = RegExp(
+      r'(?:cd|disc|disk|part|parte|disco|libro|era|eras|acto|act|vol|volume|tomo|chapter|capitulo|capítulo|section|seccion|sección|ch|cap)'
+      r'[\s._|-]*(\d{1,4}|[ivxlcdm]+)\b',
+      caseSensitive: false,
+    ).firstMatch(n);
+    int? base;
+    if (partNum != null) {
+      final raw = partNum.group(1)!;
+      base = int.tryParse(raw) ?? _romanToInt(raw);
+    }
+    base ??= () {
+      final numMatch = RegExp(r'(\d{1,4})').firstMatch(n);
+      return numMatch != null ? int.tryParse(numMatch.group(1)!) : null;
+    }();
+
+    if (isPrologue) return base ?? 0;
+    if (isEpilogue) return 10000 + (base ?? 0);
+    return base;
+  }
+
+  static int? _romanToInt(String roman) {
+    const values = <String, int>{
+      'i': 1,
+      'v': 5,
+      'x': 10,
+      'l': 50,
+      'c': 100,
+      'd': 500,
+      'm': 1000,
+    };
+    final s = roman.toLowerCase().trim();
+    if (s.isEmpty || !RegExp(r'^[ivxlcdm]+$').hasMatch(s)) return null;
+    var total = 0;
+    var prev = 0;
+    for (var i = s.length - 1; i >= 0; i--) {
+      final v = values[s[i]]!;
+      if (v < prev) {
+        total -= v;
+      } else {
+        total += v;
+        prev = v;
       }
     }
-
-    final numMatch = RegExp(r'\d+').firstMatch(n);
-    if (numMatch != null) {
-      return int.tryParse(numMatch.group(0)!);
-    }
-    return null;
+    return total > 0 ? total : null;
   }
 
   /// Parses a relative path using segment mapping, custom regex rules, or default tokenization.
@@ -172,7 +196,7 @@ class PathMetadataParser {
           case PathSegmentRole.bookTitle:
             bookTitle = val;
             break;
-          case PathSegmentRole.narrator:
+          case PathSegmentRole.part:
             narrator = val;
             break;
           case PathSegmentRole.ignore:
