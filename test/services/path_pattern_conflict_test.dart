@@ -77,8 +77,8 @@ void main() {
       final authorNode = categories.firstWhere((c) => c.name == 'Brandon Sanderson');
       final sagaNode = categories.firstWhere((c) => c.name == 'Mistborn');
 
-      expect(authorNode.depth, equals(1));
-      expect(sagaNode.depth, equals(2));
+      expect(authorNode.depth, equals(0));
+      expect(sagaNode.depth, equals(1));
       expect(sagaNode.parentId, equals(authorNode.id));
       expect(authorNode.lft, equals(1));
       expect(sagaNode.lft, equals(2));

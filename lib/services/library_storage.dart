@@ -1236,7 +1236,7 @@ class LibraryStorage {
 
     final rootNodes = childrenMap[null] ?? [];
     for (final root in rootNodes) {
-      dfs(root, 1);
+      dfs(root, 0);
     }
 
     await db.transaction((txn) async {

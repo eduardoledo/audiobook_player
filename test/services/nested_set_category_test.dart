@@ -14,6 +14,8 @@ void main() {
 
     setUp(() async {
       storage = LibraryStorage();
+      final db = await storage.database;
+      await db.delete('categories');
     });
 
     test('insertCategory and rebuildNestedSet maintain lft < rgt and correct depth invariant', () async {

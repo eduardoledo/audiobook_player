@@ -1,0 +1,30 @@
+{
+  "name": "audiobook_player",
+  "version": "1.0.0",
+  "description": "A Flutter app for playing audiobooks with chapter support. Scan directories for audiobooks (.m4b) and play them with full chapter navigation.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eduardoledo/audiobook_player.git"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/eduardoledo/audiobook_player/issues"
+  },
+  "homepage": "https://github.com/eduardoledo/audiobook_player#readme",
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.5.1",
+    "prettier": "^3.9.8"
+  }
+}
