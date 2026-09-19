@@ -7,15 +7,19 @@ This document defines the canonical domain vocabulary for the Audiobook Player p
 ## Core Entities
 
 ### Audiobook
+
 A logical entity representing a single audio book, which may consist of one or more physical audio files (chapters or parts) stored in a structured directory or container format.
 
 ### Book Status
+
 The classification of an `Audiobook` within the library lifecycle:
+
 - **New**: Unopened/unstarted book.
 - **In Progress**: Book currently being listened to, with saved position history.
 - **Finished**: Book that has been completed by the user.
 
 ### Bookmark
+
 A user-created or system-generated marker at a specific timestamp within an `Audiobook`, optionally containing a title, text note, or auto-recorded audio snippet.
 
 ---
@@ -23,15 +27,19 @@ A user-created or system-generated marker at a specific timestamp within an `Aud
 ## Playback & Audio Control
 
 ### Playback State
+
 The isolated runtime parameters associated with a specific `Audiobook`:
+
 - **Current Position**: Timestamp in milliseconds.
 - **Playback Speed**: Rate multiplier (e.g., 0.5x to 3.0x) persisted per book.
 - **Volume Gain / Voice Boost**: Amplification or equalizer settings specialized for speech clarity.
 
 ### Smart Sleep Timer
+
 An inactivity countdown timer that automatically pauses audio playback. It supports automatic reset upon detecting physical movement via accelerometer sensor inputs (shake-to-extend).
 
 ### Jump History
+
 A stack of manual position changes (e.g., seek, fast-forward, chapter skip) allowing immediate "Undo Jump" restoration if the user accidentally loses their place.
 
 ---
@@ -39,12 +47,15 @@ A stack of manual position changes (e.g., seek, fast-forward, chapter skip) allo
 ## Advanced Playback Controls
 
 ### Short Rewind on Resume
+
 A dynamic backward offset applied automatically upon resuming playback. The offset duration scales based on the elapsed pause duration (e.g., 0s for short pauses, up to 30s for multi-hour/overnight pauses).
 
 ### Motion-Assisted Timer Reset
+
 An energy-efficient accelerometer monitoring mode activated exclusively during the final warning window of a `SmartSleepTimer`. Physical movement above a user-configured threshold automatically resets the countdown.
 
 ### Jump Stack (`JumpHistory`)
+
 A database-persisted stack of manual seek operations per `Audiobook`, storing timestamp snapshots before position mutations to allow reliable single-tap position recovery across app restarts.
 
 ---
@@ -52,16 +63,20 @@ A database-persisted stack of manual seek operations per `Audiobook`, storing ti
 ## Library & Folder Organization
 
 ### Root Library Folder
+
 A user-configured directory path registered in the application for scanning audiobooks. Multiple root folders can exist, each associated with a content category (e.g., Audiobooks, Podcasts).
 
 ### Cover Art Resolution Strategy
+
 The resolution pipeline for book cover artwork:
+
 1. Local `cover.jpg` / `cover.png` in book directory.
 2. Embedded ID3 / MP4 metadata cover art.
 3. Fallback online search query (only triggered with explicit user consent per book).
 4. Generic placeholder fallback.
 
 ### Voice/Text Bookmark
+
 A custom user marker bound to an exact timestamp, containing optional inline text notes or short voice recordings.
 
 ---
@@ -69,15 +84,19 @@ A custom user marker bound to an exact timestamp, containing optional inline tex
 ## Integrations & System Interfaces
 
 ### Car Mode
+
 A specialized touch UI layout optimized for driving, featuring oversized touch targets, high-contrast typography, and swipe-gesture controls to minimize distraction.
 
 ### Media Controls Notification Integration
+
 Enhanced system background media controls offering custom rewind/fast-forward actions, sleep-timer extension shortcuts, and bookmark creation directly from the lockscreen/notification shade.
 
 ### Voice Clarity Equalizer
+
 A 5-band graphic equalizer profile with built-in voice frequency boost and volume gain controls tailored for spoken-word audio.
 
 ### Local Library Backup
+
 A standalone JSON/ZIP archive exporter and importer for local playback history, position timestamps, and bookmarks, allowing complete manual or scheduled local restoration.
 
 ---
@@ -85,15 +104,19 @@ A standalone JSON/ZIP archive exporter and importer for local playback history, 
 ## Formats, Chaptering & eBook Sync
 
 ### Multi-File Virtual Audiobook
+
 An `Audiobook` representation created from a directory containing multiple physical audio files (e.g., separate MP3 files per chapter), stitched together sequentially as a single continuous playback session.
 
 ### Embedded & Virtual Chapters
+
 Chapter definitions extracted from container metadata (M4B/MP4 TOC) or created virtually by the user/system to demarcate logical sections within single-file or multi-file audiobooks.
 
 ### eBook-Assisted Silence Detection
+
 An advanced chapter detection feature combining audio silence scanning with eBook text alignment (EPUB, PDF, LIT). The first few phrases following a detected audio silence are transcribed or matched against the eBook structure to confirm exact chapter boundaries and titles.
 
 ### Short Rewind Thresholds
+
 - Pause < 5 min $\rightarrow$ 2s rewind (2,000 ms)
 - Pause 5–15 min $\rightarrow$ 5s rewind (5,000 ms)
 - Pause 15–60 min $\rightarrow$ 10s rewind (10,000 ms)
@@ -105,68 +128,93 @@ An advanced chapter detection feature combining audio silence scanning with eBoo
 ## Path Structure Mapping
 
 ### Segment Path Mapper
+
 A user-configurable positional mapping rule configured via `PathStructureSelectorDialog` that displays and maps all path segments starting from the registered scan root directory down to the book level (e.g., segment 0 = Author, segment 1 = Universe, segment 2 = Saga, segment 3 = Title) to override automatic pattern detection for custom directory layouts.
 
 ### Cascading Segment Metadata Update
+
 The automated mechanism that propagates metadata modifications made to a parent directory segment (such as Author, Universe, or Saga) to all sibling audiobooks sharing the exact relative path prefix, updating both local `.metadata.json` files on disk and SQLite library records.
 
 ### Path Metadata Parser
+
 A pure, stateless domain service (`PathMetadataParser`) responsible for classifying path segments, extracting publication years, narrator credits, and sequence positions, and stripping decorative token artifacts from clean book title strings.
 
 ### Hierarchical Reading Order Key
+
 A composite double array (e.g. `[2.0, 1.0]`) extracted from folder hierarchy levels (Universe, Saga, Era, Book) used to sort audiobooks chronologically or in exact narrative sequence across the library.
 
 ### Sanitized Book Title Storage
+
 The policy ensuring that `AudiobookScanner` strips detected publication year brackets (`(2006)`) and parenthetical narrator markers (`(read by Frank Muller)`) from `bookTitle` before persisting records to SQLite, while preserving explicit user JSON overrides in local `book.metadata.json` files.
 
 ### Standalone Book Node Placement
+
 The library rendering and parsing rule where standalone audiobooks lacking saga/universe subdivisions (`Author/BookTitle`) assign `saga = null` and `universe = null`, displaying directly under their Author's expandable node in the library UI tree without dummy category folders.
 
 ### Hierarchy Level Deduplication
+
 The path parsing rule enforcing that if a lower-level hierarchy node (`saga`, `era`, `bookTitle`) matches a higher-level parent node (`author`, `universe`, `saga`) after string normalization, the lower-level field is set to `null` to prevent redundant nested category subfolders.
 
 ### Nested Set Category Hierarchy
+
 A database persistence model using a dedicated SQLite `categories` table with `lft`, `rgt`, `depth`, and `parent_id` attributes. This structure represents arbitrary-depth library categories (Author, Universe, Saga, Sub-series, Era) and enables immediate subtree traversal queries with `WHERE lft BETWEEN parent.lft AND parent.rgt`.
 
 ### Multi-Depth Book Node Placement
+
 The library architecture rule allowing any `Audiobook` or `Ebook` to hold a foreign key `category_id` pointing to a node at any level of depth in the `categories` tree, enabling books to reside under intermediate parent categories (e.g. directly under an Author) as well as leaf categories (e.g. under a specific Saga Era).
 
 ### Active Path Pattern Nested Set Synchronization
+
 The mechanism invoked when saving a `PathPatternRule` in `PathStructureSelectorDialog`. It immediately scans directory hierarchies under all active scan roots according to saved rules, generates missing `CategoryNode` records in SQLite, recalculates global `lft`/`rgt`/`depth`/`path_prefix` bounds, and updates `category_id` on all affected audiobooks.
 
 ### Path Pattern Conflict Resolution
+
 The validation pipeline evaluated when saving a new `PathPatternRule`. It checks (1) overlapping scan root paths and (2) hierarchical category node collisions at identical depths. When a conflict is detected, the user is prompted to either maintain the existing pattern or replace it with the new pattern.
 
 ### Nested Set UI Tree Rendering
+
 The UI tree construction policy where `HomeScreen` and `HomeCubit` build the directory tree view directly from the SQLite `categories` Nested Set table using `lft` ordering and `parent_id` relationships, attaching books to their associated `CategoryNode` via `category_id`.
+
+### Parent Order (`parent_order`)
+
+A unified sorting sequence number assigned to a `CategoryNode` or `Audiobook` within its parent node, replacing legacy `universeOrder` and `sagaOrder` fields with a single real/numeric priority for hierarchical tree rendering.
 
 ---
 
 ## Development & Workflow Discipline
 
 ### Post-Implementation Commit & Push Rule
+
 The operational mandate requiring the agent to prepare a clean git commit message and request explicit user confirmation before running `git commit` and `git push` upon completing any implementation ticket or architectural milestone.
 
 ### Post-Commit Ticket Status Report Rule
+
 Upon completing a ticket implementation, obtaining user approval, and executing the git commit/push, the agent must immediately display an updated list of all remaining pending tickets on the frontier.
 
 ### Clickable File Links in Reports Rule
+
 Whenever displaying ticket lists, file paths, or reports, every ticket title/path must be rendered as an explicit clickable markdown file link using the `file:///` URI scheme (e.g. `[04-multi-root-library.md](file:///home/eduardo/Development/audiobook_player/.scratch/smart-audiobook-player-parity/issues/04-multi-root-library-and-cover-art-resolver.md)`) so the user can click directly on the file to view its full contents in the IDE.
 
 ### Plain Text Absolute File Paths Rule
+
 Whenever presenting lists of tickets, always provide the exact absolute file path in plain code format (e.g. `.scratch/smart-audiobook-player-parity/issues/04-multi-root-library-and-cover-art-resolver.md`) in addition to markdown links, so the user can easily select or click it to complete the path in their command input.
 
 ### Interactive Mention & Link Syntax Rule
+
 Whenever presenting ticket lists, format ticket paths using `@-mention` syntax (e.g. `@[.scratch/smart-audiobook-player-parity/issues/04-multi-root-library-and-cover-art-resolver.md]`) or `[file.md](file:///path)` links so that clicking them directly completes or inputs the path string in the chat prompt.
 
 ### Copyable Command Snippets Rule
+
 Whenever listing pending tickets, format each ticket with ready-to-copy/click command code blocks (e.g. `/tdd .scratch/smart-audiobook-player-parity/issues/04-multi-root-library-and-cover-art-resolver.md`) so the user can immediately copy and execute the command in the chat box.
 
 ### Post-Implementation Code Review Prompt Rule
+
 Upon completing any implementation ticket (with tests passing and commit/push complete), the agent must explicitly ask the user if they wish to initiate a `/code-review` session to review changes against repository standards and the feature spec.
 
 ### Zero Current Problems Quality Invariant
+
 Every code implementation, refactor, or hotfix must strictly leave `flutter analyze lib/` and `@current_problems` 100% clean (0 errors, 0 warnings). Code is considered invalid and non-commit-ready if any analyzer issues remain unresolved.
 
 ### Asynchronous Background App Build & Deployment Policy
+
 Whenever launching or compiling the application (`flutter run`, `flutter build`, `adb install`), the agent must execute the build/deploy operation in a non-blocking background process or sub-agent, immediately returning control to the user so the development workflow continues without delay.

@@ -37,6 +37,7 @@ class DirPathMetadata {
   final String? seriesSequence;
   final String? universeOrder;
   final List<double> readingOrderKey;
+  final double? parentOrder;
 
   const DirPathMetadata({
     required this.author,
@@ -49,6 +50,7 @@ class DirPathMetadata {
     this.seriesSequence,
     this.universeOrder,
     this.readingOrderKey = const [],
+    this.parentOrder,
   });
 }
 
@@ -444,6 +446,9 @@ class AudiobookScanner {
       }
       universeOrder ??= pos;
 
+      final double? parentOrder = orderTokenFromSegment(bookTitle) ??
+          (pos != null ? double.tryParse(pos) : null);
+
       return DirPathMetadata(
         author: author,
         universe: _nonEmpty(universe),
@@ -455,6 +460,7 @@ class AudiobookScanner {
         seriesSequence: pos,
         universeOrder: universeOrder,
         readingOrderKey: key,
+        parentOrder: parentOrder,
       );
     }
 

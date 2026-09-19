@@ -29,6 +29,7 @@ class Audiobook {
   final List<Chapter> chapters;
   final bool isRead;
   final int? categoryId;
+  final double? parentOrder;
 
   const Audiobook({
     // required this.id,
@@ -53,6 +54,7 @@ class Audiobook {
     required this.chapters,
     this.isRead = false,
     this.categoryId,
+    this.parentOrder,
   });
 
   factory Audiobook.fromJson(Map<String, dynamic> json, String basePath) {
@@ -74,6 +76,14 @@ class Audiobook {
           if (parsed != null) readingOrderKey.add(parsed);
         }
       }
+    }
+
+    final rawParentOrder = json['parentOrder'] ?? json['parent_order'];
+    double? parentOrder;
+    if (rawParentOrder is num) {
+      parentOrder = rawParentOrder.toDouble();
+    } else if (rawParentOrder != null) {
+      parentOrder = double.tryParse(rawParentOrder.toString());
     }
 
     return Audiobook(
@@ -108,6 +118,7 @@ class Audiobook {
       chapters: chapters,
       isRead: json['isRead'] as bool? ?? false,
       categoryId: json['categoryId'] as int?,
+      parentOrder: parentOrder,
     );
   }
 
@@ -132,6 +143,7 @@ class Audiobook {
     List<Chapter>? chapters,
     bool? isRead,
     int? categoryId,
+    double? parentOrder,
   }) {
     return Audiobook(
       path: path,
@@ -155,6 +167,7 @@ class Audiobook {
       chapters: chapters ?? this.chapters,
       isRead: isRead ?? this.isRead,
       categoryId: categoryId ?? this.categoryId,
+      parentOrder: parentOrder ?? this.parentOrder,
     );
   }
 
@@ -184,6 +197,7 @@ class Audiobook {
         'chapters': chapters.map((c) => c.toJson()).toList(),
         'isRead': isRead,
         if (categoryId != null) 'categoryId': categoryId,
+        if (parentOrder != null) 'parentOrder': parentOrder,
       };
 
   int get durationInSeconds {

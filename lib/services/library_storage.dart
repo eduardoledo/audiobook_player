@@ -106,7 +106,7 @@ class LibraryStorage {
     
     _db = await openDatabase(
       path,
-      version: 13,
+      version: 14,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE scan_paths (
@@ -135,7 +135,8 @@ class LibraryStorage {
             rgt INTEGER NOT NULL,
             depth INTEGER NOT NULL,
             parent_id INTEGER,
-            path_prefix TEXT UNIQUE
+            path_prefix TEXT UNIQUE,
+            parent_order REAL
           )
         ''');
         await db.execute('''
@@ -215,6 +216,11 @@ class LibraryStorage {
         ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 14) {
+          try {
+            await db.execute('ALTER TABLE categories ADD COLUMN parent_order REAL');
+          } catch (_) {}
+        }
         if (oldVersion < 13) {
           await db.execute('''
             CREATE TABLE IF NOT EXISTS categories (
@@ -224,7 +230,8 @@ class LibraryStorage {
               rgt INTEGER NOT NULL,
               depth INTEGER NOT NULL,
               parent_id INTEGER,
-              path_prefix TEXT UNIQUE
+              path_prefix TEXT UNIQUE,
+              parent_order REAL
             )
           ''');
           try {

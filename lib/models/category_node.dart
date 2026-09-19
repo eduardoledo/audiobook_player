@@ -6,6 +6,7 @@ class CategoryNode {
   final int depth;
   final int? parentId;
   final String pathPrefix;
+  final double? parentOrder;
 
   const CategoryNode({
     this.id,
@@ -15,6 +16,7 @@ class CategoryNode {
     required this.depth,
     this.parentId,
     required this.pathPrefix,
+    this.parentOrder,
   });
 
   Map<String, dynamic> toMap() {
@@ -26,6 +28,7 @@ class CategoryNode {
       'depth': depth,
       'parent_id': parentId,
       'path_prefix': pathPrefix,
+      if (parentOrder != null) 'parent_order': parentOrder,
     };
   }
 
@@ -38,6 +41,7 @@ class CategoryNode {
       depth: map['depth'] as int? ?? 0,
       parentId: map['parent_id'] as int?,
       pathPrefix: map['path_prefix'] as String? ?? '',
+      parentOrder: (map['parent_order'] as num?)?.toDouble(),
     );
   }
 
@@ -49,6 +53,7 @@ class CategoryNode {
     int? depth,
     int? parentId,
     String? pathPrefix,
+    double? parentOrder,
   }) {
     return CategoryNode(
       id: id ?? this.id,
@@ -58,6 +63,7 @@ class CategoryNode {
       depth: depth ?? this.depth,
       parentId: parentId ?? this.parentId,
       pathPrefix: pathPrefix ?? this.pathPrefix,
+      parentOrder: parentOrder ?? this.parentOrder,
     );
   }
 }

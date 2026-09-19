@@ -168,7 +168,9 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                   _isFolderView ? Icons.view_module : Icons.folder_copy,
                 ),
                 onPressed: () => setState(() => _isFolderView = !_isFolderView),
-                tooltip: _isFolderView ? 'Vista por categorías' : 'Vista por carpetas',
+                tooltip: _isFolderView
+                    ? 'Vista por categorías'
+                    : 'Vista por carpetas',
               ),
               IconButton(
                 icon: const Icon(Icons.settings),
@@ -274,8 +276,16 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
               : (filteredAudiobooks.isEmpty
                     ? _buildEmptyFilteredState()
                     : (_isFolderView
-                          ? _buildDirectoryView(context, state, filteredAudiobooks)
-                          : _buildAudiobookList(context, state, filteredAudiobooks))),
+                          ? _buildDirectoryView(
+                              context,
+                              state,
+                              filteredAudiobooks,
+                            )
+                          : _buildAudiobookList(
+                              context,
+                              state,
+                              filteredAudiobooks,
+                            ))),
         ),
       ],
     );
@@ -330,7 +340,10 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
             const SizedBox(height: 8),
             Text(
               'Try changing your search terms or filter.',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.5),
+                fontSize: 13,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -383,15 +396,18 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                   avatar: IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
-                    icon: const Icon(Icons.account_tree, size: 16, color: Color(0xFFE8B86D)),
+                    icon: const Icon(
+                      Icons.account_tree,
+                      size: 16,
+                      color: Color(0xFFE8B86D),
+                    ),
                     tooltip: 'Configurar estructura de carpeta',
                     onPressed: () async {
                       final homeCubit = context.read<HomeCubit>();
                       final updated = await showDialog<bool>(
                         context: context,
-                        builder: (_) => PathStructureSelectorDialog(
-                          rootPath: path,
-                        ),
+                        builder: (_) =>
+                            PathStructureSelectorDialog(rootPath: path),
                       );
                       if (updated == true && mounted) {
                         unawaited(homeCubit.rescanAll());
@@ -467,7 +483,8 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
             ),
             const SizedBox(height: 8),
             Text(
-              l10n?.emptyLibrarySubtitle ?? 'Tap "Add folder to scan" to select a directory\ncontaining audiobooks (.m4b)',
+              l10n?.emptyLibrarySubtitle ??
+                  'Tap "Add folder to scan" to select a directory\ncontaining audiobooks (.m4b)',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.5),
@@ -622,7 +639,11 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
     return matchesA.length.compareTo(matchesB.length);
   }
 
-  Widget _buildAudiobookList(BuildContext context, HomeState state, [List<Audiobook>? booksToDisplay]) {
+  Widget _buildAudiobookList(
+    BuildContext context,
+    HomeState state, [
+    List<Audiobook>? booksToDisplay,
+  ]) {
     final books = booksToDisplay ?? state.audiobooks;
     if (books.isEmpty) return const SizedBox.shrink();
 
@@ -678,8 +699,9 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                           }
                           if (best != null) return best;
                           for (final book in books) {
-                            final seq =
-                                double.tryParse(book.seriesSequence ?? '');
+                            final seq = double.tryParse(
+                              book.seriesSequence ?? '',
+                            );
                             if (seq == null) continue;
                             if (best == null || seq < best) best = seq;
                           }
@@ -929,7 +951,8 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
               } else if (value == 'path_roles') {
                 showDialog<bool>(
                   context: context,
-                  builder: (_) => PathStructureSelectorDialog(rootPath: book.path),
+                  builder: (_) =>
+                      PathStructureSelectorDialog(rootPath: book.path),
                 ).then((updated) {
                   if (updated == true && context.mounted) {
                     context.read<HomeCubit>().rescanAll();
@@ -1072,7 +1095,11 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
     );
   }
 
-  Widget _buildEbookList(BuildContext context, HomeState state, [List<Ebook>? ebooksToDisplay]) {
+  Widget _buildEbookList(
+    BuildContext context,
+    HomeState state, [
+    List<Ebook>? ebooksToDisplay,
+  ]) {
     final ebooks = ebooksToDisplay ?? state.ebooks;
     if (ebooks.isEmpty) return const SizedBox.shrink();
 
@@ -1202,8 +1229,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: books
                               .map(
-                                (book) =>
-                                    _buildEbookTile(context, state, book),
+                                (book) => _buildEbookTile(context, state, book),
                               )
                               .toList(),
                         );
@@ -1711,9 +1737,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
 
     for (final book in books) {
       // Directory path is the template source (not the media file).
-      final bookPath = book is Ebook
-          ? book.path
-          : (book as Audiobook).path;
+      final bookPath = book is Ebook ? book.path : (book as Audiobook).path;
 
       final matchedBase = _matchScanPath(bookPath, bases);
       final meta = matchedBase != null
@@ -1870,9 +1894,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
       } else if (item is Audiobook) {
         childrenWidgets.add(_buildAudiobookTile(context, state, item));
       } else {
-        childrenWidgets.add(
-          _buildEbookTile(context, state, item as Ebook),
-        );
+        childrenWidgets.add(_buildEbookTile(context, state, item as Ebook));
       }
     }
 

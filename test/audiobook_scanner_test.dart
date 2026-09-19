@@ -56,6 +56,7 @@ void main() {
       expect(metadata.universe, 'Artemis Fowl');
       expect(metadata.bookTitle, 'The Arctic Incident');
       expect(metadata.seriesSequence, '02');
+      expect(metadata.parentOrder, 2.0);
       expect(AudiobookScanner.orderTokenFromSegment('02-The Arctic Incident'), 2.0);
       expect(AudiobookScanner.stripOrderPrefix('08-The Last Guardian'),
           'The Last Guardian');
