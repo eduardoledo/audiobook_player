@@ -131,6 +131,12 @@ A database persistence model using a dedicated SQLite `categories` table with `l
 ### Multi-Depth Book Node Placement
 The library architecture rule allowing any `Audiobook` or `Ebook` to hold a foreign key `category_id` pointing to a node at any level of depth in the `categories` tree, enabling books to reside under intermediate parent categories (e.g. directly under an Author) as well as leaf categories (e.g. under a specific Saga Era).
 
+### Active Path Pattern Nested Set Synchronization
+The mechanism invoked when saving a `PathPatternRule` in `PathStructureSelectorDialog`. It immediately scans directory hierarchies under all active scan roots according to saved rules, generates missing `CategoryNode` records in SQLite, recalculates global `lft`/`rgt`/`depth`/`path_prefix` bounds, and updates `category_id` on all affected audiobooks.
+
+### Path Pattern Conflict Resolution
+The validation pipeline evaluated when saving a new `PathPatternRule`. It checks (1) overlapping scan root paths and (2) hierarchical category node collisions at identical depths. When a conflict is detected, the user is prompted to either maintain the existing pattern or replace it with the new pattern.
+
 ### Nested Set UI Tree Rendering
 The UI tree construction policy where `HomeScreen` and `HomeCubit` build the directory tree view directly from the SQLite `categories` Nested Set table using `lft` ordering and `parent_id` relationships, attaching books to their associated `CategoryNode` via `category_id`.
 

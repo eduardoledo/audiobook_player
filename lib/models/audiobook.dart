@@ -185,6 +185,19 @@ class Audiobook {
         'isRead': isRead,
         if (categoryId != null) 'categoryId': categoryId,
       };
+
+  int get durationInSeconds {
+    final parts = durationFormatted.split(':');
+    if (parts.length >= 3) {
+      final hours = int.tryParse(parts[0]) ?? 0;
+      final minutes = int.tryParse(parts[1]) ?? 0;
+      final seconds = double.tryParse(parts[2])?.toInt() ?? 0;
+      return hours * 3600 + minutes * 60 + seconds;
+    }
+    return 0;
+  }
+
+  double get progressPercentage => isRead ? 1.0 : 0.0;
 }
 
 /// Represents a chapter within an audiobook.

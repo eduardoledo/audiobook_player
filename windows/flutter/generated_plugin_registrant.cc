@@ -7,6 +7,7 @@
 #include "generated_plugin_registrant.h"
 
 #include <ffmpeg_kit_flutter_new_audio/f_fmpeg_kit_flutter_plugin.h>
+#include <firebase_core/firebase_core_plugin_c_api.h>
 #include <flutter_inappwebview_windows/flutter_inappwebview_windows_plugin_c_api.h>
 #include <media_kit_libs_windows_audio/media_kit_libs_windows_audio_plugin_c_api.h>
 #include <permission_handler_windows/permission_handler_windows_plugin.h>
@@ -16,6 +17,8 @@
 void RegisterPlugins(flutter::PluginRegistry* registry) {
   FFmpegKitFlutterPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FFmpegKitFlutterPlugin"));
+  FirebaseCorePluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("FirebaseCorePluginCApi"));
   FlutterInappwebviewWindowsPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FlutterInappwebviewWindowsPluginCApi"));
   MediaKitLibsWindowsAudioPluginCApiRegisterWithRegistrar(

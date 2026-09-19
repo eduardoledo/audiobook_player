@@ -172,12 +172,14 @@ class HomeCubit extends Cubit<HomeState> {
       final ebooks = await _storage.getEbooks();
       final categories = await _storage.getAllCategories();
       final playlists = await _storage.getPlaylists();
+      final viewMode = await _storage.getLibraryViewMode();
       emit(state.copyWith(
         scanPaths: paths,
         audiobooks: books,
         ebooks: ebooks,
         categories: categories,
         playlists: playlists,
+        viewMode: viewMode,
         isLoading: false,
       ));
       
@@ -186,6 +188,16 @@ class HomeCubit extends Cubit<HomeState> {
     } catch (e) {
       emit(state.copyWith(error: e.toString(), isLoading: false));
     }
+  }
+
+  Future<void> setViewMode(String mode) async {
+    emit(state.copyWith(viewMode: mode));
+    await _storage.saveLibraryViewMode(mode);
+  }
+
+  Future<void> toggleViewMode() async {
+    final nextMode = state.viewMode == 'grid' ? 'list' : 'grid';
+    await setViewMode(nextMode);
   }
 
   Future<void> scanDirectory(String path) async {

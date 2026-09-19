@@ -26,6 +26,7 @@ class HomeState extends Equatable {
   final String? error;
   final Map<String, BookFetchStatus> fetchingMetadata;
   final int metadataFetchTotalCount;
+  final String viewMode;
 
   const HomeState({
     this.scanPaths = const [],
@@ -40,6 +41,7 @@ class HomeState extends Equatable {
     this.error,
     this.fetchingMetadata = const {},
     this.metadataFetchTotalCount = 0,
+    this.viewMode = 'list',
   });
 
   HomeState copyWith({
@@ -55,6 +57,7 @@ class HomeState extends Equatable {
     String? error,
     Map<String, BookFetchStatus>? fetchingMetadata,
     int? metadataFetchTotalCount,
+    String? viewMode,
     bool clearActivePlaylist = false,
   }) {
     return HomeState(
@@ -70,6 +73,7 @@ class HomeState extends Equatable {
       error: error ?? this.error,
       fetchingMetadata: fetchingMetadata ?? this.fetchingMetadata,
       metadataFetchTotalCount: metadataFetchTotalCount ?? this.metadataFetchTotalCount,
+      viewMode: viewMode ?? this.viewMode,
     );
   }
 
@@ -91,5 +95,6 @@ class HomeState extends Equatable {
         error,
         fetchingMetadata,
         metadataFetchTotalCount,
+        viewMode,
       ];
 }

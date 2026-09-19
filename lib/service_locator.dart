@@ -10,11 +10,16 @@ import 'services/structure_detection_job.dart';
 import 'services/structure_detection_notifications.dart';
 import 'services/whisper_model_manager.dart';
 
+import 'services/crashlytics_service.dart';
+
 final getIt = GetIt.instance;
 
 Future<void> setupServiceLocator() async {
   final storage = LibraryStorage();
   getIt.registerSingleton<LibraryStorage>(storage);
+
+  final crashlytics = CrashlyticsService();
+  getIt.registerSingleton<CrashlyticsService>(crashlytics);
 
   getIt.registerLazySingleton<AudiobookScanner>(() => AudiobookScanner());
   getIt.registerSingleton<AudioPlayerService>(AudioPlayerService());

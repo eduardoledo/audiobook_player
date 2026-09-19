@@ -10,6 +10,7 @@ import '../models/bookmark.dart';
 import '../models/playlist.dart';
 import '../models/path_pattern_rule.dart';
 import '../models/category_node.dart';
+import '../models/path_pattern_conflict_result.dart';
 
 /// Persists scan paths and audiobook library using SQLite.
 class LibraryStorage {
@@ -599,6 +600,54 @@ class LibraryStorage {
     return {};
   }
 
+  Future<PathPatternConflictResult> validatePathPatternConflict(
+    PathPatternRule targetRule,
+  ) async {
+    final currentRules = await getPathPatternRules();
+    final targetNorm = p.normalize(targetRule.rootPath);
+
+    for (final existingRule in currentRules.values) {
+      final existingNorm = p.normalize(existingRule.rootPath);
+      if (existingNorm == targetNorm) continue;
+
+      // 1. Stage 1: Overlapping root path check (is child or parent)
+      final isSubpath = p.isWithin(existingNorm, targetNorm) ||
+          p.isWithin(targetNorm, existingNorm) ||
+          targetNorm.startsWith('$existingNorm${p.separator}') ||
+          existingNorm.startsWith('$targetNorm${p.separator}');
+
+      if (isSubpath) {
+        return PathPatternConflictResult(
+          hasConflict: true,
+          conflictingRule: existingRule,
+          reason:
+              'La ruta del patrón ("$targetNorm") se solapa con un patrón existente ("$existingNorm").',
+        );
+      }
+
+      // 2. Stage 2: Conflicting roles at identical hierarchy depth
+      final minLength = targetRule.roles.length < existingRule.roles.length
+          ? targetRule.roles.length
+          : existingRule.roles.length;
+      for (var i = 0; i < minLength; i++) {
+        final roleA = targetRule.roles[i];
+        final roleB = existingRule.roles[i];
+        if (roleA != roleB &&
+            roleA != PathSegmentRole.ignore &&
+            roleB != PathSegmentRole.ignore) {
+          return PathPatternConflictResult(
+            hasConflict: true,
+            conflictingRule: existingRule,
+            reason:
+                'El nivel ${i + 1} define el rol "${roleA.label}" que entra en conflicto con "${roleB.label}" en "$existingNorm".',
+          );
+        }
+      }
+    }
+
+    return PathPatternConflictResult.clean;
+  }
+
   Future<void> savePathPatternRule(PathPatternRule rule) async {
     final current = await getPathPatternRules();
     current[rule.rootPath] = rule;
@@ -611,6 +660,154 @@ class LibraryStorage {
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    await rebuildNestedSetFromPatterns();
+  }
+
+  /// Scans directories under saved active pattern rules, populates categories table,
+  /// recalculates global lft/rgt bounds via rebuildNestedSet, and updates category_id on audiobooks.
+  Future<void> rebuildNestedSetFromPatterns() async {
+    final rulesMap = await getPathPatternRules();
+    if (rulesMap.isEmpty) return;
+
+    final db = await database;
+
+    // Structure to track nodes in memory before bulk db insert
+    // Keyed by normalized path_prefix
+    final Map<String, CategoryNode> nodesByPathPrefix = {};
+    // Map path_prefix to parent path_prefix
+    final Map<String, String?> parentPathPrefixMap = {};
+
+    for (final rule in rulesMap.values) {
+      final rootDir = Directory(rule.rootPath);
+      if (!await rootDir.exists()) continue;
+
+      // Depth-first traversal up to rule.roles.length depth
+      Future<void> traverseDir(Directory dir, int roleIndex, String currentPathPrefix) async {
+        if (roleIndex >= rule.roles.length) return;
+
+        final role = rule.roles[roleIndex];
+        try {
+          final entities = await dir.list(followLinks: false).toList();
+          final subDirs = entities.whereType<Directory>().toList();
+
+          for (final subDir in subDirs) {
+            final dirName = p.basename(subDir.path);
+            if (dirName.startsWith('.') || dirName == '_metadata') continue;
+
+            final nextPrefix = currentPathPrefix.isEmpty
+                ? dirName
+                : '$currentPathPrefix/$dirName';
+
+            if (role != PathSegmentRole.ignore && role != PathSegmentRole.bookTitle && role != PathSegmentRole.part) {
+              if (!nodesByPathPrefix.containsKey(nextPrefix)) {
+                nodesByPathPrefix[nextPrefix] = CategoryNode(
+                  name: dirName,
+                  lft: 0,
+                  rgt: 0,
+                  depth: 0,
+                  pathPrefix: nextPrefix,
+                );
+                parentPathPrefixMap[nextPrefix] = currentPathPrefix.isEmpty ? null : currentPathPrefix;
+              }
+            } else {
+              // Even if role is ignored or bookTitle/part, keep parent hierarchy link for children
+              if (currentPathPrefix.isNotEmpty) {
+                parentPathPrefixMap[nextPrefix] = currentPathPrefix;
+              }
+            }
+
+            await traverseDir(subDir, roleIndex + 1, nextPrefix);
+          }
+        } catch (_) {}
+      }
+
+      await traverseDir(rootDir, 0, '');
+    }
+
+    // Persist category nodes to DB and obtain generated IDs
+    final Map<String, int> prefixToIdMap = {};
+
+    await db.transaction((txn) async {
+      // Clean previous category entries to guarantee clean sync
+      await txn.delete('categories');
+
+      // We insert parent nodes first by sorting pathPrefix length
+      final sortedPrefixes = nodesByPathPrefix.keys.toList()
+        ..sort((a, b) => a.split('/').length.compareTo(b.split('/').length));
+
+      for (final prefix in sortedPrefixes) {
+        final rawNode = nodesByPathPrefix[prefix]!;
+        final parentPrefix = parentPathPrefixMap[prefix];
+
+        // Find nearest ancestor in prefixToIdMap
+        int? parentId;
+        int computedDepth = 1;
+
+        if (parentPrefix != null) {
+          var curr = parentPrefix;
+          while (curr.isNotEmpty) {
+            if (prefixToIdMap.containsKey(curr)) {
+              parentId = prefixToIdMap[curr];
+              // Depth is parent depth + 1
+              final parentNode = nodesByPathPrefix[curr];
+              if (parentNode != null) {
+                computedDepth = parentNode.depth + 1;
+              }
+              break;
+            }
+            final lastSep = curr.lastIndexOf('/');
+            if (lastSep == -1) break;
+            curr = curr.substring(0, lastSep);
+          }
+        }
+
+        final insertNode = rawNode.copyWith(parentId: parentId, depth: computedDepth);
+        final id = await txn.insert('categories', insertNode.toMap());
+        prefixToIdMap[prefix] = id;
+      }
+    });
+
+    // Recalculate lft, rgt, depth globally across the inserted tree
+    await rebuildNestedSet();
+
+    // Now update category_id on all stored Audiobooks
+    final books = await getAudiobooks();
+    if (books.isEmpty) return;
+
+    final updatedBooks = <Audiobook>[];
+    final allScanPaths = await getScanPaths();
+
+    for (final book in books) {
+      int? matchedCategoryId;
+
+      for (final scanPath in allScanPaths) {
+        final normScanPath = p.normalize(scanPath);
+        final normBookPath = p.normalize(book.path);
+
+        if (normBookPath.startsWith('$normScanPath${p.separator}') || normBookPath == normScanPath) {
+          final relPath = p.relative(normBookPath, from: normScanPath);
+          final segments = p.split(relPath);
+
+          // Find deepest matching category prefix
+          var accumulatedPrefix = '';
+          for (final seg in segments) {
+            final testPrefix = accumulatedPrefix.isEmpty ? seg : '$accumulatedPrefix/$seg';
+            if (prefixToIdMap.containsKey(testPrefix)) {
+              matchedCategoryId = prefixToIdMap[testPrefix];
+            }
+            accumulatedPrefix = testPrefix;
+          }
+        }
+      }
+
+      if (matchedCategoryId != book.categoryId) {
+        updatedBooks.add(book.copyWith(categoryId: matchedCategoryId));
+      } else {
+        updatedBooks.add(book);
+      }
+    }
+
+    await saveAudiobooks(updatedBooks);
   }
 
   Future<void> saveSeriesMappingRules(Map<String, List<String>> rules) async {
@@ -799,6 +996,27 @@ class LibraryStorage {
       {
         'key': 'last_played_book_path',
         'value': path,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> getLibraryViewMode() async {
+    final db = await database;
+    final maps = await db.query('settings', where: 'key = ?', whereArgs: ['main_library_view_mode']);
+    if (maps.isNotEmpty && maps.first['value'] != null) {
+      return maps.first['value'] as String;
+    }
+    return 'list';
+  }
+
+  Future<void> saveLibraryViewMode(String mode) async {
+    final db = await database;
+    await db.insert(
+      'settings',
+      {
+        'key': 'main_library_view_mode',
+        'value': mode,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -1018,7 +1236,7 @@ class LibraryStorage {
 
     final rootNodes = childrenMap[null] ?? [];
     for (final root in rootNodes) {
-      dfs(root, 0);
+      dfs(root, 1);
     }
 
     await db.transaction((txn) async {

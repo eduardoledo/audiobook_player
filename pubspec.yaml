@@ -43,6 +43,8 @@ dependencies:
   sherpa_onnx: ^1.13.4
   ffmpeg_kit_flutter_new_audio: ^2.5.2
   flutter_local_notifications: ^19.4.0
+  firebase_core: ^4.15.0
+  firebase_crashlytics: ^5.4.0
 
 dev_dependencies:
   flutter_test:

@@ -59,7 +59,7 @@ class _PathStructureSelectorDialogState
       }
 
       if (await dir.exists()) {
-        final entities = await dir.list(recursive: true).toList();
+        final entities = await dir.list().toList();
         final firstAudio = entities.firstWhere(
           (e) {
             final ext = p.extension(e.path).toLowerCase();
@@ -120,6 +120,7 @@ class _PathStructureSelectorDialogState
       }
     }
 
+    if (!mounted) return;
     setState(() {
       _resolvedRootPath = root;
       _sampleSegments = segments;
@@ -131,10 +132,52 @@ class _PathStructureSelectorDialogState
   String _resolvedRootPath = '';
 
   Future<void> _saveRule() async {
+    final targetPath =
+        _resolvedRootPath.isNotEmpty ? _resolvedRootPath : widget.rootPath;
     final rule = PathPatternRule(
-      rootPath: _resolvedRootPath.isNotEmpty ? _resolvedRootPath : widget.rootPath,
+      rootPath: targetPath,
       roles: _selectedRoles,
     );
+
+    final conflict = await _storage.validatePathPatternConflict(rule);
+    if (conflict.hasConflict && mounted) {
+      final shouldReplace = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF252525),
+          title: const Text(
+            'Conflicto de Patrón Detectado',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: Text(
+            '${conflict.reason}\n\n¿Deseás mantener el patrón anterior o reemplazarlo con el nuevo?',
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text(
+                'Mantener Patrón Anterior',
+                style: TextStyle(color: Colors.white54),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE8B86D),
+                foregroundColor: const Color(0xFF1A1A1A),
+              ),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Reemplazar con Nuevo Patrón'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldReplace != true) {
+        return;
+      }
+    }
+
     await _storage.savePathPatternRule(rule);
     widget.onRuleSaved?.call();
     if (mounted) Navigator.of(context).pop(true);

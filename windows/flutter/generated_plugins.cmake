@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   ffmpeg_kit_flutter_new_audio
+  firebase_core
   flutter_inappwebview_windows
   media_kit_libs_windows_audio
   permission_handler_windows

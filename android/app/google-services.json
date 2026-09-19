@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "479903957742",
+    "project_id": "audiobook-player-app",
+    "storage_bucket": "audiobook-player-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:479903957742:android:c03b5e71e9153b6bf6a9ff",
+        "android_client_info": {
+          "package_name": "ar.ledo.audiobook_player"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB0i2Ym77ZjZBZexCVBGRVK8P8ZMotqJg0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

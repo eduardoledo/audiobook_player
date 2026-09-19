@@ -11,8 +11,17 @@ import 'l10n/app_localizations.dart';
 import 'screens/home_screen.dart';
 import 'service_locator.dart';
 
+import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'services/crashlytics_service.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   
   await JustAudioBackground.init(
     androidNotificationChannelId: 'com.example.audiobook_player.channel.audio',
@@ -29,6 +38,20 @@ Future<void> main() async {
     FilePickerLinux.registerWith();
   }
   await setupServiceLocator();
+
+  final crashlytics = getIt<CrashlyticsService>();
+  await crashlytics.init();
+
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    crashlytics.recordError(details.exception, details.stack, fatal: true);
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    crashlytics.recordError(error, stack, fatal: true);
+    return true;
+  };
+
   runApp(const AudiobookPlayerApp());
 }
 
