@@ -12,6 +12,8 @@ import 'services/whisper_model_manager.dart';
 
 import 'services/crashlytics_service.dart';
 
+import 'services/web_server_service.dart';
+
 final getIt = GetIt.instance;
 
 Future<void> setupServiceLocator() async {
@@ -31,6 +33,7 @@ Future<void> setupServiceLocator() async {
   );
   getIt.registerLazySingleton<GoogleDriveService>(() => GoogleDriveService());
   getIt.registerLazySingleton<WhisperModelManager>(() => WhisperModelManager());
+  getIt.registerLazySingleton<WebServerService>(() => WebServerService());
 
   final notifs = StructureDetectionNotifications();
   await notifs.init();
