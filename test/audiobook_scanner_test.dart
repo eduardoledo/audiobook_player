@@ -2,8 +2,16 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:audiobook_player/services/audiobook_scanner.dart';
 import 'package:audiobook_player/models/audiobook.dart';
+import 'package:audiobook_player/service_locator.dart';
+import 'package:audiobook_player/services/library_storage.dart';
+
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
+  setUpAll(() {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  });
   group('AudiobookScanner parseDirPath tests', () {
     test('author/universe/saga/book pattern (4 segments)', () {
       const base = '/Users/user/audiobooks';
@@ -234,6 +242,10 @@ void main() {
         final textFile = File('${emptyDir.path}/notes.txt');
         await textFile.writeAsString('some notes');
 
+        final storage = LibraryStorage();
+        if (!getIt.isRegistered<LibraryStorage>()) {
+          getIt.registerSingleton<LibraryStorage>(storage);
+        }
         final scanner = AudiobookScanner();
         final messages = await scanner.scanDirectoryStream(tempDir.path).toList();
 

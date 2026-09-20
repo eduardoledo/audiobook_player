@@ -16,7 +16,7 @@ import '../services/library_storage.dart';
 import '../service_locator.dart';
 import 'player_screen.dart';
 import 'playlists_tab.dart';
-import 'series_mapping_screen.dart';
+import 'web_server_screen.dart';
 import 'google_drive_screen.dart';
 import 'ebook_reader_screen.dart';
 import '../utils/structure_detection_flow.dart';
@@ -178,7 +178,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                   Navigator.push(
                     context,
                     MaterialPageRoute<void>(
-                      builder: (context) => const SeriesMappingScreen(),
+                      builder: (context) => const WebServerScreen(),
                     ),
                   );
                 },
