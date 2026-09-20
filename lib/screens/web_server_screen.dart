@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../service_locator.dart';
 import '../services/web_server_service.dart';
@@ -28,7 +29,7 @@ class _WebServerScreenState extends State<WebServerScreen> {
         });
 
         if (started) {
-          _showPairingDialog(pin);
+          unawaited(_showPairingDialog(pin));
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('No se pudo iniciar el servidor web')),
@@ -45,18 +46,22 @@ class _WebServerScreenState extends State<WebServerScreen> {
     }
   }
 
-  void _showPairingDialog(String pin) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => WebServerPairingDialog(
-        pin: pin,
-        serverAddress: 'http://<IP_DISPOSITIVO>:${_webServerService.port}',
-        onStopServer: () async {
-          await _webServerService.stop();
-          if (mounted) {
-            setState(() {});
-          }
-        },
+  Future<void> _showPairingDialog(String pin) async {
+    final ip = await _webServerService.getLocalIpAddress();
+    if (!mounted) return;
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (context) => WebServerPairingDialog(
+          pin: pin,
+          serverAddress: 'http://$ip:${_webServerService.port}',
+          onStopServer: () async {
+            await _webServerService.stop();
+            if (mounted) {
+              setState(() {});
+            }
+          },
+        ),
       ),
     );
   }

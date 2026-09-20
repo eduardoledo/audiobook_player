@@ -17,6 +17,23 @@ class WebServerService {
   final Set<WebSocketChannel> _sockets = {};
 
   Future<bool> Function(String clientIp)? onApprovalRequested;
+  Future<String> getLocalIpAddress() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLinkLocal: false,
+      );
+      for (final interface in interfaces) {
+        for (final addr in interface.addresses) {
+          if (!addr.isLoopback) {
+            return addr.address;
+          }
+        }
+      }
+    } catch (_) {}
+    return '127.0.0.1';
+  }
+
   bool get isRunning => _server != null;
   int get port => _port;
   String? get activePin => _activePin;
