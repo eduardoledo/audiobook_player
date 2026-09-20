@@ -47,7 +47,7 @@ void main() {
       expect(uncategorized.first.title, equals('Uncategorized Book'));
     });
 
-    test('syncCategoriesFromBookPaths excludes leaf book folders and only creates category nodes for parent directories', () {
+    test('syncCategoriesFromBookPaths includes directory category nodes for book folder paths', () {
       final relativeBookPaths = [
         'Brandon Sanderson/Cosmere/Mistborn Era 1/01 - The Final Empire',
         'Brandon Sanderson/Cosmere/Mistborn Era 1/02 - The Well of Ascension',
@@ -58,7 +58,7 @@ void main() {
         final parts = relPath.split('/').where((s) => s.isNotEmpty).toList();
         if (parts.length <= 1) continue;
         var currentPrefix = '';
-        for (var i = 0; i < parts.length - 1; i++) {
+        for (var i = 0; i < parts.length; i++) {
           currentPrefix = currentPrefix.isEmpty ? parts[i] : '$currentPrefix/${parts[i]}';
           prefixes.add(currentPrefix);
         }
@@ -67,8 +67,8 @@ void main() {
       expect(prefixes, contains('Brandon Sanderson'));
       expect(prefixes, contains('Brandon Sanderson/Cosmere'));
       expect(prefixes, contains('Brandon Sanderson/Cosmere/Mistborn Era 1'));
-      expect(prefixes.contains('Brandon Sanderson/Cosmere/Mistborn Era 1/01 - The Final Empire'), isFalse);
-      expect(prefixes.contains('Brandon Sanderson/Cosmere/Mistborn Era 1/02 - The Well of Ascension'), isFalse);
+      expect(prefixes, contains('Brandon Sanderson/Cosmere/Mistborn Era 1/01 - The Final Empire'));
+      expect(prefixes, contains('Brandon Sanderson/Cosmere/Mistborn Era 1/02 - The Well of Ascension'));
     });
   });
 }

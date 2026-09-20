@@ -284,7 +284,7 @@ class HomeCubit extends Cubit<HomeState> {
 
           final categoryMap = await _storage.syncCategoriesFromBookPaths(relativePaths);
 
-          // Update audiobooks and ebooks with assigned categoryId
+          // Update audiobooks and ebooks with assigned categoryId of their containing directory
           final updatedAudiobooks = state.audiobooks.map((b) {
             String? bookRel;
             for (final sp in scanPaths) {
@@ -293,11 +293,8 @@ class HomeCubit extends Cubit<HomeState> {
                 break;
               }
             }
-            if (bookRel != null) {
-              final parentPrefix = p.dirname(bookRel);
-              if (parentPrefix != '.' && categoryMap.containsKey(parentPrefix)) {
-                return b.copyWith(categoryId: categoryMap[parentPrefix]);
-              }
+            if (bookRel != null && categoryMap.containsKey(bookRel)) {
+              return b.copyWith(categoryId: categoryMap[bookRel]);
             }
             return b;
           }).toList();

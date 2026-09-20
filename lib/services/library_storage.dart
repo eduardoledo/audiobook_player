@@ -1182,16 +1182,22 @@ class LibraryStorage {
   Future<Map<String, int>> syncCategoriesFromBookPaths(List<String> relativePaths) async {
     final db = await database;
     
-    // 1. Build list of unique path prefixes (e.g., "Brandon Sanderson", "Brandon Sanderson/Cosmere", ...)
+    // 1. Build list of unique path prefixes for folder categories
     final Set<String> prefixes = {};
     for (final relPath in relativePaths) {
       final parts = p.split(relPath).where((s) => s.isNotEmpty && s != '.').toList();
-      if (parts.length <= 1) continue; // Leaf or root only
-      
-      // Exclude the last segment (book title / file name)
+      if (parts.length <= 1) continue; // Root single book file
+
+      // Include all directory levels up to the folder containing the book
+      // Note: for audiobooks, relPath is a folder path; for ebooks, relPath is a file path.
+      // In both cases, parts.sublist(0, parts.length - 1) or parts itself if folder
+      final folderParts = relPath.endsWith('.epub') || relPath.endsWith('.pdf')
+          ? parts.sublist(0, parts.length - 1)
+          : parts;
+
       var currentPrefix = '';
-      for (var i = 0; i < parts.length - 1; i++) {
-        currentPrefix = currentPrefix.isEmpty ? parts[i] : '$currentPrefix/${parts[i]}';
+      for (var i = 0; i < folderParts.length; i++) {
+        currentPrefix = currentPrefix.isEmpty ? folderParts[i] : '$currentPrefix/${folderParts[i]}';
         prefixes.add(currentPrefix);
       }
     }
