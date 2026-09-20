@@ -768,14 +768,14 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                   uncategorizedAuthorless.sort((a, b) => compareSortable(a.parentOrder, a.title, b.parentOrder, b.title));
                   return ExpansionTile(
                     initiallyExpanded: true,
-                    iconColor: Colors.white70,
-                    collapsedIconColor: Colors.white54,
+                    iconColor: const Color(0xFFE8B86D),
+                    collapsedIconColor: Colors.white70,
                     title: const Text(
-                      'Sin categoría',
+                      'Desconocido',
                       style: TextStyle(
-                        color: Colors.white70,
+                        color: Color(0xFFE8B86D),
                         fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                        fontSize: 18,
                       ),
                     ),
                     children: uncategorizedAuthorless.map((b) => _buildAudiobookTile(context, state, b)).toList(),
