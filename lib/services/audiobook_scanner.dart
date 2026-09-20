@@ -1086,6 +1086,17 @@ class AudiobookScanner {
       }
     }
 
+      /// Helper to check if a directory or any of its subdirectories contains valid audio or ebook files.
+      Future<bool> containsBooksRecursive(Directory dir) async {
+        try {
+          final List<FileSystemEntity> list = await dir.list(recursive: true).toList();
+          return list.any((entity) =>
+              entity is File && (_isAudioFile(entity) || _isEbookFile(entity)));
+        } catch (_) {
+          return false;
+        }
+      }
+
     /// Walk the tree. Only directories that contain audio are audiobooks.
     /// Exception: multiparte books (CD1/Era1/…) — parent is the book.
     /// Any other folder without audio is only path metadata (Author/Universe/Saga).
@@ -1142,9 +1153,11 @@ class AudiobookScanner {
         return;
       }
 
-      // Rule 3: intermediate folder (Author/Universe/Saga/…) — recurse only.
+      // Rule 3: intermediate folder (Author/Universe/Saga/…) — recurse only into subdirectories containing books.
       for (final sub in subdirs) {
-        await scanSubTree(sub.path);
+        if (await containsBooksRecursive(sub)) {
+          await scanSubTree(sub.path);
+        }
       }
     }
 

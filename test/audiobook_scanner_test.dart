@@ -216,9 +216,33 @@ void main() {
     });
   });
 
-  group('AudiobookScanner MP3 Duration Parser', () {
-    test('Correctly parses or returns null instead of hanging on mock MP3 bytes', () async {
-      await importHelper();
+  group('AudiobookScanner empty directory filtering', () {
+    test('ignores directories without audiobooks or ebooks', () async {
+      final tempDir = Directory.systemTemp.createTempSync('scanner_empty_test');
+      try {
+        final authorDir = Directory('${tempDir.path}/Author');
+        final emptyDir = Directory('${authorDir.path}/EmptyFolder');
+        final bookDir = Directory('${authorDir.path}/ValidBook');
+        await emptyDir.create(recursive: true);
+        await bookDir.create(recursive: true);
+
+        // Add dummy audio file to valid book directory
+        final dummyAudio = File('${bookDir.path}/chapter1.mp3');
+        await dummyAudio.writeAsString('audio content');
+
+        // Add a non-book file to empty directory
+        final textFile = File('${emptyDir.path}/notes.txt');
+        await textFile.writeAsString('some notes');
+
+        final scanner = AudiobookScanner();
+        final messages = await scanner.scanDirectoryStream(tempDir.path).toList();
+
+        final scannedBooks = messages.where((m) => m.audiobook != null).map((m) => m.audiobook!).toList();
+        expect(scannedBooks.length, equals(1));
+        expect(scannedBooks.first.title, equals('ValidBook'));
+      } finally {
+        if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+      }
     });
   });
 }
