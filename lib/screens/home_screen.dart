@@ -604,19 +604,6 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
     );
   }
 
-  Map<String, Map<String?, Map<String?, List<Audiobook>>>> _groupAudiobooks(
-    List<Audiobook> audiobooks,
-  ) {
-    final Map<String, Map<String?, Map<String?, List<Audiobook>>>> grouped = {};
-    for (var book in audiobooks) {
-      grouped.putIfAbsent(book.author, () => {});
-      grouped[book.author]!.putIfAbsent(book.universe, () => {});
-      grouped[book.author]![book.universe]!.putIfAbsent(book.series, () => []);
-      grouped[book.author]![book.universe]![book.series]!.add(book);
-    }
-    return grouped;
-  }
-
   int _naturalCompare(String a, String b) {
     final regExp = RegExp(r'\d+|\D+');
     final matchesA = regExp.allMatches(a).map((m) => m.group(0)!).toList();
@@ -647,8 +634,73 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
     final books = booksToDisplay ?? state.audiobooks;
     if (books.isEmpty) return const SizedBox.shrink();
 
-    final grouped = _groupAudiobooks(books);
-    final authors = grouped.keys.toList()..sort(_naturalCompare);
+    final categories = state.categories;
+
+    // Group books by author
+    final Map<String, List<Audiobook>> booksByAuthor = {};
+    final List<Audiobook> uncategorizedAuthorless = [];
+
+    for (final book in books) {
+      final author = book.author.trim();
+      if (author.isEmpty || author.toLowerCase() == 'unknown') {
+        uncategorizedAuthorless.add(book);
+      } else {
+        booksByAuthor.putIfAbsent(author, () => []).add(book);
+      }
+    }
+
+    final authors = booksByAuthor.keys.toList()..sort(_naturalCompare);
+
+    int compareSortable(
+      double? orderA,
+      String titleA,
+      double? orderB,
+      String titleB,
+    ) {
+      if (orderA != null && orderB != null) {
+        final cmp = orderA.compareTo(orderB);
+        if (cmp != 0) return cmp;
+      } else if (orderA != null) {
+        return -1;
+      } else if (orderB != null) {
+        return 1;
+      }
+      return _naturalCompare(titleA, titleB);
+    }
+
+    Widget buildCategoryTile(CategoryNode node, List<Audiobook> allBooks, int depthLevel) {
+      final nodeBooks = allBooks.where((b) => b.categoryId == node.id).toList();
+      nodeBooks.sort((a, b) => compareSortable(a.parentOrder, a.title, b.parentOrder, b.title));
+
+      final childNodes = categories.where((c) => c.parentId == node.id).toList();
+      childNodes.sort((a, b) => compareSortable(a.parentOrder, a.name, b.parentOrder, b.name));
+
+      final childrenWidgets = <Widget>[
+        ...nodeBooks.map((b) => _buildAudiobookTile(context, state, b)),
+        ...childNodes.map((c) => buildCategoryTile(c, allBooks, depthLevel + 1)),
+      ];
+
+      final double leftPadding = (32 + (depthLevel * 16)).toDouble();
+
+      return Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: true,
+          tilePadding: EdgeInsets.only(left: leftPadding, right: 16),
+          iconColor: Colors.white70,
+          collapsedIconColor: Colors.white54,
+          title: Text(
+            node.name,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+            ),
+          ),
+          children: childrenWidgets,
+        ),
+      );
+    }
 
     return Column(
       children: [
@@ -666,165 +718,52 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
             },
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: authors.length,
+              itemCount: authors.length + (uncategorizedAuthorless.isNotEmpty ? 1 : 0),
               itemBuilder: (context, index) {
-                final author = authors[index];
-                final universeMap = grouped[author]!;
-                final universeKeys = universeMap.keys.toList()
-                  ..sort((a, b) => _naturalCompare(a ?? '', b ?? ''));
+                if (index < authors.length) {
+                  final author = authors[index];
+                  final authorBooks = booksByAuthor[author]!;
 
-                return ExpansionTile(
-                  initiallyExpanded: true,
-                  iconColor: const Color(0xFFE8B86D),
-                  collapsedIconColor: Colors.white70,
-                  title: Text(
-                    author,
-                    style: const TextStyle(
-                      color: Color(0xFFE8B86D),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                  final uncategorizedBooks = authorBooks.where((b) => b.categoryId == null).toList();
+                  uncategorizedBooks.sort((a, b) => compareSortable(a.parentOrder, a.title, b.parentOrder, b.title));
+
+                  final rootCategories = categories.where((c) => c.parentId == null && c.pathPrefix.startsWith(author)).toList();
+                  rootCategories.sort((a, b) => compareSortable(a.parentOrder, a.name, b.parentOrder, b.name));
+
+                  return ExpansionTile(
+                    initiallyExpanded: true,
+                    iconColor: const Color(0xFFE8B86D),
+                    collapsedIconColor: Colors.white70,
+                    title: Text(
+                      author,
+                      style: const TextStyle(
+                        color: Color(0xFFE8B86D),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
-                  ),
-                  children: universeKeys.map((universe) {
-                    final seriesMap = universeMap[universe]!;
-                    final seriesKeys = seriesMap.keys.toList()
-                      ..sort((a, b) {
-                        double? seriesOrder(String? series) {
-                          final books = seriesMap[series]!;
-                          double? best;
-                          for (final book in books) {
-                            if (book.readingOrderKey.isEmpty) continue;
-                            final head = book.readingOrderKey.first;
-                            if (best == null || head < best) best = head;
-                          }
-                          if (best != null) return best;
-                          for (final book in books) {
-                            final seq = double.tryParse(
-                              book.seriesSequence ?? '',
-                            );
-                            if (seq == null) continue;
-                            if (best == null || seq < best) best = seq;
-                          }
-                          return best;
-                        }
-
-                        final oa = seriesOrder(a);
-                        final ob = seriesOrder(b);
-                        if (oa != null && ob != null) {
-                          final cmp = oa.compareTo(ob);
-                          if (cmp != 0) return cmp;
-                        } else if (oa != null) {
-                          return -1;
-                        } else if (ob != null) {
-                          return 1;
-                        }
-                        return _naturalCompare(a ?? '', b ?? '');
-                      });
-
-                    final seriesChildren = seriesKeys.map((series) {
-                      final books = seriesMap[series]!;
-                      books.sort(HomeCubit.compareLibraryOrder);
-
-                      if (series != null) {
-                        return Theme(
-                          data: Theme.of(
-                            context,
-                          ).copyWith(dividerColor: Colors.transparent),
-                          child: ExpansionTile(
-                            initiallyExpanded: true,
-                            tilePadding: const EdgeInsets.only(
-                              left: 32,
-                              right: 16,
-                            ),
-                            iconColor: Colors.white70,
-                            collapsedIconColor: Colors.white54,
-                            title: Text(
-                              () {
-                                final order = books
-                                    .map((b) => b.universeOrder)
-                                    .whereType<String>()
-                                    .where((o) => o.isNotEmpty)
-                                    .firstOrNull;
-                                return order != null
-                                    ? '$order - $series'
-                                    : series;
-                              }(),
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 15,
-                              ),
-                            ),
-                            children: books.map((book) {
-                              final prefix = book.seriesSequence != null
-                                  ? '${book.seriesSequence} - '
-                                  : (book.universeOrder != null
-                                        ? '${book.universeOrder} - '
-                                        : (book.publishYear != null
-                                              ? '${book.publishYear} - '
-                                              : ''));
-                              return _buildAudiobookTile(
-                                context,
-                                state,
-                                book,
-                                prefix: prefix,
-                              );
-                            }).toList(),
-                          ),
-                        );
-                      } else {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: books
-                              .map(
-                                (book) => _buildAudiobookTile(
-                                  context,
-                                  state,
-                                  book,
-                                  prefix: book.universeOrder != null
-                                      ? '${book.universeOrder} - '
-                                      : '',
-                                ),
-                              )
-                              .toList(),
-                        );
-                      }
-                    }).toList();
-
-                    if (universe != null) {
-                      return Theme(
-                        data: Theme.of(
-                          context,
-                        ).copyWith(dividerColor: Colors.transparent),
-                        child: ExpansionTile(
-                          initiallyExpanded: true,
-                          tilePadding: const EdgeInsets.only(
-                            left: 24,
-                            right: 16,
-                          ),
-                          iconColor: const Color(
-                            0xFFE8B86D,
-                          ).withValues(alpha: 0.8),
-                          collapsedIconColor: Colors.white60,
-                          title: Text(
-                            'Universo: $universe',
-                            style: const TextStyle(
-                              color: Color(0xFFE8B86D),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 16,
-                            ),
-                          ),
-                          children: seriesChildren,
-                        ),
-                      );
-                    } else {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: seriesChildren,
-                      );
-                    }
-                  }).toList(),
-                );
+                    children: [
+                      ...uncategorizedBooks.map((b) => _buildAudiobookTile(context, state, b)),
+                      ...rootCategories.map((c) => buildCategoryTile(c, authorBooks, 0)),
+                    ],
+                  );
+                } else {
+                  uncategorizedAuthorless.sort((a, b) => compareSortable(a.parentOrder, a.title, b.parentOrder, b.title));
+                  return ExpansionTile(
+                    initiallyExpanded: true,
+                    iconColor: Colors.white70,
+                    collapsedIconColor: Colors.white54,
+                    title: const Text(
+                      'Sin categoría',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    children: uncategorizedAuthorless.map((b) => _buildAudiobookTile(context, state, b)).toList(),
+                  );
+                }
               },
             ),
           ),
