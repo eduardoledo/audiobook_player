@@ -5,9 +5,9 @@ Configure Android Adaptive Icon using `flutter_launcher_icons` so that the app m
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Create/configure `adaptive_icon_background` and `adaptive_icon_foreground` in `pubspec.yaml` under `flutter_icons`.
-- [ ] Ensure foreground asset contains transparent padding so mascot artwork scales to fill the active viewport safe-zone.
-- [ ] Run `dart run flutter_launcher_icons` to generate native XML (`android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`) and Android density mipmap PNG assets.
-- [ ] Verify `flutter analyze lib/ test/` reports 0 static analysis errors.
+- [x] Create/configure `adaptive_icon_background` and `adaptive_icon_foreground` in `pubspec.yaml` under `flutter_icons`.
+- [x] Ensure foreground asset contains transparent padding so mascot artwork scales to fill the active viewport safe-zone.
+- [x] Run `dart run flutter_launcher_icons` to generate native XML (`android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`) and Android density mipmap PNG assets.
+- [x] Verify `flutter analyze lib/ test/` reports 0 static analysis errors.
