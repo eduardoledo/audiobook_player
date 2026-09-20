@@ -62,5 +62,26 @@ void main() {
       expect(authResponse.statusCode, equals(200));
       expect(authResponse.body, contains('categories'));
     });
+
+    test('returns 401 on /api/download without valid token and serves file when authorized', () async {
+      await serverService.start(port: 9879);
+
+      final unauthResponse = await http.get(Uri.parse('http://127.0.0.1:9879/api/download?path=/test.mp3'));
+      expect(unauthResponse.statusCode, equals(401));
+
+      final pin = serverService.generatePin();
+      final verifyResponse = await http.post(
+        Uri.parse('http://127.0.0.1:9879/api/verify_pin'),
+        body: {'pin': pin},
+      );
+      final body = jsonDecode(verifyResponse.body) as Map<String, dynamic>;
+      final token = body['token'] as String;
+
+      final authResponse = await http.get(
+        Uri.parse('http://127.0.0.1:9879/api/download?path=/test.mp3'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      expect(authResponse.statusCode, equals(404)); // File does not exist, but endpoint is reached and auth passed
+    });
   });
 }

@@ -78,6 +78,41 @@ class WebServerService {
       );
     });
 
+    app.get('/api/download', (Request request) {
+      final authHeader = request.headers['authorization'];
+      final token = authHeader?.startsWith('Bearer ') == true
+          ? authHeader!.substring(7)
+          : null;
+
+      if (token == null || !_validTokens.contains(token)) {
+        return Response.unauthorized(
+          jsonEncode({'status': 'error', 'message': 'Unauthorized'}),
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      final filePath = request.url.queryParameters['path'];
+      if (filePath == null || filePath.isEmpty) {
+        return Response.badRequest(
+          body: jsonEncode({'status': 'error', 'message': 'Missing path parameter'}),
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      final file = File(filePath);
+      if (!file.existsSync()) {
+        return Response.notFound(
+          jsonEncode({'status': 'error', 'message': 'File not found'}),
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      return Response.ok(file.openRead(), headers: {
+        'content-type': 'application/octet-stream',
+        'content-disposition': 'attachment; filename="${file.path.split(Platform.pathSeparator).last}"',
+      });
+    });
+
     // ignore: prefer_const_constructors
     final handler = Pipeline().addMiddleware(logRequests()).addHandler(app.call);
 
