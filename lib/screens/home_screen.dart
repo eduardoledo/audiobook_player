@@ -727,7 +727,12 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                   final uncategorizedBooks = authorBooks.where((b) => b.categoryId == null).toList();
                   uncategorizedBooks.sort((a, b) => compareSortable(a.parentOrder, a.title, b.parentOrder, b.title));
 
-                  final rootCategories = categories.where((c) => c.parentId == null && c.pathPrefix.startsWith(author)).toList();
+                  final rootCategories = categories.where((c) {
+                    if (c.parentId != null) return false;
+                    final firstSegment = c.pathPrefix.split('/').first;
+                    return firstSegment.toLowerCase() == author.toLowerCase() ||
+                        c.pathPrefix.toLowerCase().startsWith(author.toLowerCase());
+                  }).toList();
                   rootCategories.sort((a, b) => compareSortable(a.parentOrder, a.name, b.parentOrder, b.name));
 
                   return ExpansionTile(

@@ -262,25 +262,88 @@ class HomeCubit extends Cubit<HomeState> {
           ));
         },
         onDone: () async {
-          await _storage.saveAudiobooks(state.audiobooks);
-          await _storage.saveEbooks(state.ebooks);
+          // Sync categories from all relative book paths
+          final scanPaths = await _storage.getScanPaths();
+          final List<String> relativePaths = [];
+          for (final b in state.audiobooks) {
+            for (final sp in scanPaths) {
+              if (b.path.startsWith(sp)) {
+                relativePaths.add(p.relative(b.path, from: sp));
+                break;
+              }
+            }
+          }
+          for (final e in state.ebooks) {
+            for (final sp in scanPaths) {
+              if (e.file.startsWith(sp)) {
+                relativePaths.add(p.relative(e.file, from: sp));
+                break;
+              }
+            }
+          }
+
+          final categoryMap = await _storage.syncCategoriesFromBookPaths(relativePaths);
+
+          // Update audiobooks and ebooks with assigned categoryId
+          final updatedAudiobooks = state.audiobooks.map((b) {
+            String? bookRel;
+            for (final sp in scanPaths) {
+              if (b.path.startsWith(sp)) {
+                bookRel = p.relative(b.path, from: sp);
+                break;
+              }
+            }
+            if (bookRel != null) {
+              final parentPrefix = p.dirname(bookRel);
+              if (parentPrefix != '.' && categoryMap.containsKey(parentPrefix)) {
+                return b.copyWith(categoryId: categoryMap[parentPrefix]);
+              }
+            }
+            return b;
+          }).toList();
+
+          final updatedEbooks = state.ebooks.map((e) {
+            String? bookRel;
+            for (final sp in scanPaths) {
+              if (e.file.startsWith(sp)) {
+                bookRel = p.relative(e.file, from: sp);
+                break;
+              }
+            }
+            if (bookRel != null) {
+              final parentPrefix = p.dirname(bookRel);
+              if (parentPrefix != '.' && categoryMap.containsKey(parentPrefix)) {
+                return e.copyWith(categoryId: categoryMap[parentPrefix]);
+              }
+            }
+            return e;
+          }).toList();
+
+          final categories = await _storage.getAllCategories();
+
+          await _storage.saveAudiobooks(updatedAudiobooks);
+          await _storage.saveEbooks(updatedEbooks);
           
           final authors = <String>{};
           final sagas = <String>{};
-          for (final b in state.audiobooks) {
+          for (final b in updatedAudiobooks) {
             if (b.author != 'Unknown') authors.add(b.author);
             if (b.series != null) sagas.add(b.series!);
           }
-          for (final b in state.ebooks) {
+          for (final b in updatedEbooks) {
             if (b.author != 'Unknown') authors.add(b.author);
             if (b.series != null) sagas.add(b.series!);
           }
           await _storage.saveAuthors(authors);
           await _storage.saveSagas(sagas);
 
-          // Automatic metadata update on scan completion disabled to prevent unrequested internet fetches
-          // _enqueueBooks(state.audiobooks);
-          emit(state.copyWith(isScanning: false, scanProgress: null));
+          emit(state.copyWith(
+            audiobooks: updatedAudiobooks,
+            ebooks: updatedEbooks,
+            categories: categories,
+            isScanning: false,
+            scanProgress: null,
+          ));
           _scanSubscription = null;
         },
         onError: (Object e) {

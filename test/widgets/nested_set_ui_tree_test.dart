@@ -46,5 +46,29 @@ void main() {
       expect(uncategorized.length, equals(1));
       expect(uncategorized.first.title, equals('Uncategorized Book'));
     });
+
+    test('syncCategoriesFromBookPaths excludes leaf book folders and only creates category nodes for parent directories', () {
+      final relativeBookPaths = [
+        'Brandon Sanderson/Cosmere/Mistborn Era 1/01 - The Final Empire',
+        'Brandon Sanderson/Cosmere/Mistborn Era 1/02 - The Well of Ascension',
+      ];
+
+      final Set<String> prefixes = {};
+      for (final relPath in relativeBookPaths) {
+        final parts = relPath.split('/').where((s) => s.isNotEmpty).toList();
+        if (parts.length <= 1) continue;
+        var currentPrefix = '';
+        for (var i = 0; i < parts.length - 1; i++) {
+          currentPrefix = currentPrefix.isEmpty ? parts[i] : '$currentPrefix/${parts[i]}';
+          prefixes.add(currentPrefix);
+        }
+      }
+
+      expect(prefixes, contains('Brandon Sanderson'));
+      expect(prefixes, contains('Brandon Sanderson/Cosmere'));
+      expect(prefixes, contains('Brandon Sanderson/Cosmere/Mistborn Era 1'));
+      expect(prefixes.contains('Brandon Sanderson/Cosmere/Mistborn Era 1/01 - The Final Empire'), isFalse);
+      expect(prefixes.contains('Brandon Sanderson/Cosmere/Mistborn Era 1/02 - The Well of Ascension'), isFalse);
+    });
   });
 }

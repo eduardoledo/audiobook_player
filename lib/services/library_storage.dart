@@ -1177,6 +1177,74 @@ class LibraryStorage {
     return maps.map((m) => CategoryNode.fromMap(m)).toList();
   }
 
+  /// Syncs folder path prefixes from scanned books and produces nested CategoryNodes.
+  /// Returns a map of path_prefix -> category_id.
+  Future<Map<String, int>> syncCategoriesFromBookPaths(List<String> relativePaths) async {
+    final db = await database;
+    
+    // 1. Build list of unique path prefixes (e.g., "Brandon Sanderson", "Brandon Sanderson/Cosmere", ...)
+    final Set<String> prefixes = {};
+    for (final relPath in relativePaths) {
+      final parts = p.split(relPath).where((s) => s.isNotEmpty && s != '.').toList();
+      if (parts.length <= 1) continue; // Leaf or root only
+      
+      // Exclude the last segment (book title / file name)
+      var currentPrefix = '';
+      for (var i = 0; i < parts.length - 1; i++) {
+        currentPrefix = currentPrefix.isEmpty ? parts[i] : '$currentPrefix/${parts[i]}';
+        prefixes.add(currentPrefix);
+      }
+    }
+
+    if (prefixes.isEmpty) {
+      final existing = await getAllCategories();
+      return {for (final c in existing) c.pathPrefix: c.id!};
+    }
+
+    // 2. Fetch existing categories
+    final existingMaps = await db.query('categories');
+    final Map<String, CategoryNode> existingByPrefix = {
+      for (final m in existingMaps) CategoryNode.fromMap(m).pathPrefix: CategoryNode.fromMap(m)
+    };
+
+    // 3. Ensure all prefixes exist in database
+    final sortedPrefixes = prefixes.toList()..sort((a, b) => a.split('/').length.compareTo(b.split('/').length));
+
+    for (final prefix in sortedPrefixes) {
+      if (!existingByPrefix.containsKey(prefix)) {
+        final parts = prefix.split('/');
+        final name = parts.last;
+        final parentPrefix = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : null;
+        final parentId = parentPrefix != null ? existingByPrefix[parentPrefix]?.id : null;
+
+        final newId = await db.insert('categories', {
+          'name': name,
+          'lft': 0,
+          'rgt': 0,
+          'depth': parts.length - 1,
+          'parent_id': parentId,
+          'path_prefix': prefix,
+        });
+
+        existingByPrefix[prefix] = CategoryNode(
+          id: newId,
+          name: name,
+          lft: 0,
+          rgt: 0,
+          depth: parts.length - 1,
+          parentId: parentId,
+          pathPrefix: prefix,
+        );
+      }
+    }
+
+    await rebuildNestedSet();
+
+    // 4. Return updated map of pathPrefix -> categoryId
+    final updatedCategories = await getAllCategories();
+    return {for (final c in updatedCategories) c.pathPrefix: c.id!};
+  }
+
   Future<int> insertCategory(CategoryNode node) async {
     final db = await database;
     final id = await db.insert(
