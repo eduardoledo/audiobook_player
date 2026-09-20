@@ -728,10 +728,22 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                   uncategorizedBooks.sort((a, b) => compareSortable(a.parentOrder, a.title, b.parentOrder, b.title));
 
                   final rootCategories = categories.where((c) {
-                    if (c.parentId != null) return false;
-                    final firstSegment = c.pathPrefix.split('/').first;
-                    return firstSegment.toLowerCase() == author.toLowerCase() ||
-                        c.pathPrefix.toLowerCase().startsWith(author.toLowerCase());
+                    final parts = c.pathPrefix.split('/');
+                    // Skip author folder itself as a category if it matches top-level author
+                    if (parts.length <= 1 && parts.first.toLowerCase() == author.toLowerCase()) {
+                      return false;
+                    }
+                    if (c.parentId != null) {
+                      // Check if parent is the author root category
+                      final parent = categories.firstWhere((cat) => cat.id == c.parentId, orElse: () => c);
+                      if (parent.pathPrefix.toLowerCase() != author.toLowerCase()) {
+                        return false;
+                      }
+                    } else {
+                      final firstSegment = parts.first;
+                      if (firstSegment.toLowerCase() != author.toLowerCase()) return false;
+                    }
+                    return true;
                   }).toList();
                   rootCategories.sort((a, b) => compareSortable(a.parentOrder, a.name, b.parentOrder, b.name));
 
