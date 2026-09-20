@@ -115,5 +115,28 @@ void main() {
       expect(await uploadedFile.readAsString(), equals('Audiobook test upload data'));
       await uploadedFile.delete();
     });
+
+    test('respects onApprovalRequested callback when present', () async {
+      await serverService.start(port: 9881);
+      final pin = serverService.generatePin();
+
+      // Reject connection
+      serverService.onApprovalRequested = (ip) async => false;
+      final rejectedResp = await http.post(
+        Uri.parse('http://127.0.0.1:9881/api/verify_pin'),
+        body: {'pin': pin},
+      );
+      expect(rejectedResp.statusCode, equals(403));
+      expect(rejectedResp.body, contains('rejected'));
+
+      // Approve connection
+      serverService.onApprovalRequested = (ip) async => true;
+      final approvedResp = await http.post(
+        Uri.parse('http://127.0.0.1:9881/api/verify_pin'),
+        body: {'pin': pin},
+      );
+      expect(approvedResp.statusCode, equals(200));
+      expect(approvedResp.body, contains('token'));
+    });
   });
 }

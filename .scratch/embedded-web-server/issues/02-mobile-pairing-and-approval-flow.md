@@ -10,8 +10,8 @@ Implement connection approval and authentication mechanisms in the mobile app, i
 
 ## Tasks
 
-- [ ] Implement mobile on-screen approval dialog when a new PC IP requests access.
-- [ ] Implement 4-digit PIN generation on mobile and PIN verification endpoint for browser.
-- [ ] Add mobile QR code scanner view (using `mobile_scanner` or camera integration) to scan PC pairing QR codes.
-- [ ] Implement session token generation and authentication middleware for protected `shelf` endpoints.
-- [ ] Add unit tests for PIN/token verification and pairing flows.
+- [x] Implement mobile on-screen approval dialog when a new PC IP requests access.
+- [x] Implement 4-digit PIN generation on mobile and PIN verification endpoint for browser.
+- [x] Add mobile QR code scanner view (using `mobile_scanner` or camera integration) to scan PC pairing QR codes.
+- [x] Implement session token generation and authentication middleware for protected `shelf` endpoints.
+- [x] Add unit tests for PIN/token verification and pairing flows.

@@ -16,8 +16,15 @@ class WebServerService {
   final Set<String> _validTokens = {};
   final Set<WebSocketChannel> _sockets = {};
 
+  Future<bool> Function(String clientIp)? onApprovalRequested;
   bool get isRunning => _server != null;
   int get port => _port;
+  String? get activePin => _activePin;
+
+  bool approveClientToken(String token) {
+    _validTokens.add(token);
+    return true;
+  }
 
   void broadcastPlaybackState(Map<String, dynamic> stateJson) {
     final message = jsonEncode({'type': 'playback', 'data': stateJson});
@@ -49,7 +56,19 @@ class WebServerService {
     app.post('/api/verify_pin', (Request request) async {
       final body = await request.readAsString();
       final params = Uri.splitQueryString(body);
-      final pin = params['pin'] ?? jsonDecode(body)['pin']?.toString();
+      final pin = params['pin'] ?? (body.isNotEmpty ? jsonDecode(body)['pin']?.toString() : null);
+
+      final clientIp = (request.context['shelf.io.connection_info'] as HttpConnectionInfo?)?.remoteAddress.address ?? '127.0.0.1';
+
+      if (onApprovalRequested != null) {
+        final approved = await onApprovalRequested!(clientIp);
+        if (!approved) {
+          return Response.forbidden(
+            jsonEncode({'status': 'error', 'message': 'Connection rejected by device user'}),
+            headers: {'content-type': 'application/json'},
+          );
+        }
+      }
 
       if (_activePin != null && pin == _activePin) {
         final token = 'token_${Random().nextInt(1000000)}';
