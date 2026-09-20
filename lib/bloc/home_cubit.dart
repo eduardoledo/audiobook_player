@@ -173,6 +173,14 @@ class HomeCubit extends Cubit<HomeState> {
       final categories = await _storage.getAllCategories();
       final playlists = await _storage.getPlaylists();
       final viewMode = await _storage.getLibraryViewMode();
+      debugPrint('[CATEGORY LOG] loadData loaded ${books.length} audiobooks, ${ebooks.length} ebooks, ${categories.length} categories.');
+      for (final b in books) {
+        debugPrint('[CATEGORY LOG] Loaded Audiobook "${b.title}" -> categoryId: ${b.categoryId}');
+      }
+      for (final c in categories) {
+        debugPrint('[CATEGORY LOG] Loaded Category ID ${c.id}: "${c.name}" (prefix: "${c.pathPrefix}", parentId: ${c.parentId})');
+      }
+
       emit(state.copyWith(
         scanPaths: paths,
         audiobooks: books,
@@ -283,6 +291,10 @@ class HomeCubit extends Cubit<HomeState> {
           }
 
           final categoryMap = await _storage.syncCategoriesFromBookPaths(relativePaths);
+          debugPrint('[CATEGORY LOG] Total categories synced: ${categoryMap.length}');
+          categoryMap.forEach((prefix, catId) {
+            debugPrint('[CATEGORY LOG] Prefix: "$prefix" -> Category ID: $catId');
+          });
 
           // Update audiobooks and ebooks with assigned categoryId of their containing directory
           final updatedAudiobooks = state.audiobooks.map((b) {
@@ -293,9 +305,15 @@ class HomeCubit extends Cubit<HomeState> {
                 break;
               }
             }
-            if (bookRel != null && categoryMap.containsKey(bookRel)) {
-              return b.copyWith(categoryId: categoryMap[bookRel]);
+            if (bookRel != null) {
+              final parentPrefix = p.dirname(bookRel);
+              if (parentPrefix != '.' && categoryMap.containsKey(parentPrefix)) {
+                final catId = categoryMap[parentPrefix];
+                debugPrint('[CATEGORY LOG] Audiobook "${b.title}" assigned categoryId: $catId (prefix: "$parentPrefix")');
+                return b.copyWith(categoryId: catId);
+              }
             }
+            debugPrint('[CATEGORY LOG] Audiobook "${b.title}" (path: "$bookRel") assigned NO category');
             return b;
           }).toList();
 
@@ -310,9 +328,12 @@ class HomeCubit extends Cubit<HomeState> {
             if (bookRel != null) {
               final parentPrefix = p.dirname(bookRel);
               if (parentPrefix != '.' && categoryMap.containsKey(parentPrefix)) {
-                return e.copyWith(categoryId: categoryMap[parentPrefix]);
+                final catId = categoryMap[parentPrefix];
+                debugPrint('[CATEGORY LOG] Ebook "${e.title}" assigned categoryId: $catId (prefix: "$parentPrefix")');
+                return e.copyWith(categoryId: catId);
               }
             }
+            debugPrint('[CATEGORY LOG] Ebook "${e.title}" assigned NO category');
             return e;
           }).toList();
 

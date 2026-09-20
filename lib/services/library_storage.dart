@@ -1188,13 +1188,10 @@ class LibraryStorage {
       final parts = p.split(relPath).where((s) => s.isNotEmpty && s != '.').toList();
       if (parts.length <= 1) continue; // Root single book file
 
-      // Include all directory levels up to the folder containing the book
-      // Note: for audiobooks, relPath is a folder path; for ebooks, relPath is a file path.
-      // In both cases, parts.sublist(0, parts.length - 1) or parts itself if folder
-      final folderParts = relPath.endsWith('.epub') || relPath.endsWith('.pdf')
-          ? parts.sublist(0, parts.length - 1)
-          : parts;
 
+
+      // Include all parent directory levels up to the folder containing the book
+      final folderParts = parts.sublist(0, parts.length - 1);
       var currentPrefix = '';
       for (var i = 0; i < folderParts.length; i++) {
         currentPrefix = currentPrefix.isEmpty ? folderParts[i] : '$currentPrefix/${folderParts[i]}';
