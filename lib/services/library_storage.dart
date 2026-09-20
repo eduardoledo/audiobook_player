@@ -1197,15 +1197,22 @@ class LibraryStorage {
     }
 
     if (prefixes.isEmpty) {
-      final existing = await getAllCategories();
-      return {for (final c in existing) c.pathPrefix: c.id!};
+      await db.delete('categories');
+      return {};
     }
 
-    // 2. Fetch existing categories
+    // 2. Fetch existing categories and purge orphan categories that have no active books
     final existingMaps = await db.query('categories');
-    final Map<String, CategoryNode> existingByPrefix = {
-      for (final m in existingMaps) CategoryNode.fromMap(m).pathPrefix: CategoryNode.fromMap(m)
-    };
+    final Map<String, CategoryNode> existingByPrefix = {};
+
+    for (final m in existingMaps) {
+      final cat = CategoryNode.fromMap(m);
+      if (!prefixes.contains(cat.pathPrefix)) {
+        await db.delete('categories', where: 'id = ?', whereArgs: [cat.id]);
+      } else {
+        existingByPrefix[cat.pathPrefix] = cat;
+      }
+    }
 
     // 3. Ensure all prefixes exist in database
     final sortedPrefixes = prefixes.toList()..sort((a, b) => a.split('/').length.compareTo(b.split('/').length));
