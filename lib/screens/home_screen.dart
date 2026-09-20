@@ -1152,7 +1152,24 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                   final uncategorizedBooks = authorBooks.where((b) => b.categoryId == null).toList();
                   uncategorizedBooks.sort((a, b) => compareSortable(a.parentOrder, a.title, b.parentOrder, b.title));
 
-                  final rootCategories = categories.where((c) => c.parentId == null && c.pathPrefix.startsWith(author)).toList();
+                  final rootCategories = categories.where((c) {
+                    final parts = c.pathPrefix.split('/');
+                    // Skip author folder itself as a category if it matches top-level author
+                    if (parts.length <= 1 && parts.first.toLowerCase() == author.toLowerCase()) {
+                      return false;
+                    }
+                    if (c.parentId != null) {
+                      // Check if parent is the author root category
+                      final parent = categories.firstWhere((cat) => cat.id == c.parentId, orElse: () => c);
+                      if (parent.pathPrefix.toLowerCase() != author.toLowerCase()) {
+                        return false;
+                      }
+                    } else {
+                      final firstSegment = parts.first;
+                      if (firstSegment.toLowerCase() != author.toLowerCase()) return false;
+                    }
+                    return true;
+                  }).toList();
                   rootCategories.sort((a, b) => compareSortable(a.parentOrder, a.name, b.parentOrder, b.name));
 
                   return ExpansionTile(
@@ -1179,7 +1196,7 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
                     iconColor: Colors.white70,
                     collapsedIconColor: Colors.white54,
                     title: const Text(
-                      'Sin categoría',
+                      'Desconocido',
                       style: TextStyle(
                         color: Colors.white70,
                         fontWeight: FontWeight.bold,
