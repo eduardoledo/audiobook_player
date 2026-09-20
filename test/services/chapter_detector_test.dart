@@ -49,5 +49,14 @@ void main() {
 
       expect(chapters, isEmpty);
     });
+
+    test('falls back to numbered chapters when eBook matching is not provided or inconclusive', () async {
+      const detector = ChapterDetector();
+      final chapters = await detector.detectChapters(
+        audioPath: '/non/existent/path.mp3',
+        ebookPath: null,
+      );
+      expect(chapters, isEmpty);
+    });
   });
 }

@@ -5,10 +5,10 @@ Implement full internal pipeline inside `ChapterDetector.detectChapters()` by co
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `ChapterDetector` checks for embedded M4B TOC chapters first
-- [ ] If no TOC exists, `ChapterDetector` triggers `SilenceCandidateFinder`
-- [ ] If an eBook path is provided, `ChapterDetector` matches detected silence breaks against eBook section headings
-- [ ] Automatic fallback to numbered chapters if eBook text alignment is inconclusive
-- [ ] Unit & integration tests for full `detectChapters` pipeline
+- [x] `ChapterDetector` checks for embedded M4B TOC chapters first
+- [x] If no TOC exists, `ChapterDetector` triggers `SilenceCandidateFinder`
+- [x] If an eBook path is provided, `ChapterDetector` matches detected silence breaks against eBook section headings
+- [x] Automatic fallback to numbered chapters if eBook text alignment is inconclusive
+- [x] Unit & integration tests for full `detectChapters` pipeline
