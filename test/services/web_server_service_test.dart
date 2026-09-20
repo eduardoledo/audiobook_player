@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:audiobook_player/services/web_server_service.dart';
@@ -82,6 +83,37 @@ void main() {
         headers: {'Authorization': 'Bearer $token'},
       );
       expect(authResponse.statusCode, equals(404)); // File does not exist, but endpoint is reached and auth passed
+    });
+
+    test('returns 401 on /api/upload without valid token and handles upload when authorized', () async {
+      await serverService.start(port: 9880);
+
+      final unauthResponse = await http.post(
+        Uri.parse('http://127.0.0.1:9880/api/upload?targetPath=/tmp/uploaded_test.txt'),
+        body: 'Hello World',
+      );
+      expect(unauthResponse.statusCode, equals(401));
+
+      final pin = serverService.generatePin();
+      final verifyResponse = await http.post(
+        Uri.parse('http://127.0.0.1:9880/api/verify_pin'),
+        body: {'pin': pin},
+      );
+      final body = jsonDecode(verifyResponse.body) as Map<String, dynamic>;
+      final token = body['token'] as String;
+
+      final targetFile = '/tmp/web_server_upload_test_${DateTime.now().millisecondsSinceEpoch}.txt';
+      final authResponse = await http.post(
+        Uri.parse('http://127.0.0.1:9880/api/upload?targetPath=$targetFile'),
+        headers: {'Authorization': 'Bearer $token'},
+        body: 'Audiobook test upload data',
+      );
+      expect(authResponse.statusCode, equals(200));
+
+      final uploadedFile = File(targetFile);
+      expect(uploadedFile.existsSync(), isTrue);
+      expect(await uploadedFile.readAsString(), equals('Audiobook test upload data'));
+      await uploadedFile.delete();
     });
   });
 }

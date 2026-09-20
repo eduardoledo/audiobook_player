@@ -6,15 +6,25 @@ import 'dart:math';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
+import 'package:shelf_web_socket/shelf_web_socket.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 class WebServerService {
   HttpServer? _server;
   int _port = 8080;
   String? _activePin;
   final Set<String> _validTokens = {};
+  final Set<WebSocketChannel> _sockets = {};
 
   bool get isRunning => _server != null;
   int get port => _port;
+
+  void broadcastPlaybackState(Map<String, dynamic> stateJson) {
+    final message = jsonEncode({'type': 'playback', 'data': stateJson});
+    for (final socket in _sockets) {
+      socket.sink.add(message);
+    }
+  }
 
   String generatePin() {
     final rng = Random();
@@ -94,7 +104,10 @@ class WebServerService {
       final filePath = request.url.queryParameters['path'];
       if (filePath == null || filePath.isEmpty) {
         return Response.badRequest(
-          body: jsonEncode({'status': 'error', 'message': 'Missing path parameter'}),
+          body: jsonEncode({
+            'status': 'error',
+            'message': 'Missing path parameter',
+          }),
           headers: {'content-type': 'application/json'},
         );
       }
@@ -107,14 +120,89 @@ class WebServerService {
         );
       }
 
-      return Response.ok(file.openRead(), headers: {
-        'content-type': 'application/octet-stream',
-        'content-disposition': 'attachment; filename="${file.path.split(Platform.pathSeparator).last}"',
+      return Response.ok(
+        file.openRead(),
+        headers: {
+          'content-type': 'application/octet-stream',
+          'content-disposition':
+              'attachment; filename="${file.path.split(Platform.pathSeparator).last}"',
+        },
+      );
+    });
+
+    app.post('/api/upload', (Request request) async {
+      final authHeader = request.headers['authorization'];
+      final token = authHeader?.startsWith('Bearer ') == true
+          ? authHeader!.substring(7)
+          : null;
+
+      if (token == null || !_validTokens.contains(token)) {
+        return Response.unauthorized(
+          jsonEncode({'status': 'error', 'message': 'Unauthorized'}),
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      final targetPath = request.url.queryParameters['targetPath'];
+      if (targetPath == null || targetPath.isEmpty) {
+        return Response.badRequest(
+          body: jsonEncode({
+            'status': 'error',
+            'message': 'Missing targetPath parameter',
+          }),
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      try {
+        final file = File(targetPath);
+        await file.parent.create(recursive: true);
+        final sink = file.openWrite();
+        await sink.addStream(request.read());
+        await sink.close();
+
+        return Response.ok(
+          jsonEncode({'status': 'ok', 'message': 'File uploaded successfully'}),
+          headers: {'content-type': 'application/json'},
+        );
+      } catch (e) {
+        return Response.internalServerError(
+          body: jsonEncode({'status': 'error', 'message': e.toString()}),
+          headers: {'content-type': 'application/json'},
+        );
+      }
+    });
+
+    app.get('/ws/playback', (Request request) {
+      final authHeader = request.headers['authorization'] ??
+          request.url.queryParameters['token'];
+      final token = authHeader?.startsWith('Bearer ') == true
+          ? authHeader!.substring(7)
+          : authHeader;
+
+      if (token == null || !_validTokens.contains(token)) {
+        return Response.unauthorized(
+          jsonEncode({'status': 'error', 'message': 'Unauthorized'}),
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      final wsHandler = webSocketHandler((WebSocketChannel socket, String? protocol) {
+        _sockets.add(socket);
+        socket.stream.listen(
+          (_) {},
+          onDone: () => _sockets.remove(socket),
+          onError: (_) => _sockets.remove(socket),
+        );
       });
+
+      return wsHandler(request);
     });
 
     // ignore: prefer_const_constructors
-    final handler = Pipeline().addMiddleware(logRequests()).addHandler(app.call);
+    final handler = Pipeline()
+        .addMiddleware(logRequests())
+        .addHandler(app.call);
 
     try {
       _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, _port);
@@ -125,6 +213,10 @@ class WebServerService {
   }
 
   Future<void> stop() async {
+    for (final socket in _sockets) {
+      await socket.sink.close();
+    }
+    _sockets.clear();
     await _server?.close(force: true);
     _server = null;
     _validTokens.clear();

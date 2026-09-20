@@ -10,8 +10,8 @@ Implement `WebServerService` using Dart `shelf` and `shelf_web_socket` to run a 
 
 ## Tasks
 
-- [ ] Add `shelf`, `shelf_router`, `shelf_static`, and `shelf_web_socket` dependencies to `pubspec.yaml`.
-- [ ] Create `WebServerService` with start/stop lifecycle methods and IP/port discovery.
-- [ ] Implement REST endpoints for `/api/library`, `/api/download`, and `/api/upload`.
-- [ ] Implement WebSocket endpoint `/ws/playback` broadcasting `PlayerState` changes in real time.
-- [ ] Add unit and service integration tests verifying local HTTP/WS requests and upload handling.
+- [x] Add `shelf`, `shelf_router`, `shelf_static`, and `shelf_web_socket` dependencies to `pubspec.yaml`.
+- [x] Create `WebServerService` with start/stop lifecycle methods and IP/port discovery.
+- [x] Implement REST endpoints for `/api/library`, `/api/download`, and `/api/upload`.
+- [x] Implement WebSocket endpoint `/ws/playback` broadcasting `PlayerState` changes in real time.
+- [x] Add unit and service integration tests verifying local HTTP/WS requests and upload handling.
