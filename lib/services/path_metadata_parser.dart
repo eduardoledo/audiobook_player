@@ -337,6 +337,9 @@ class PathMetadataParser {
           case PathSegmentRole.author:
             author = val;
             break;
+          case PathSegmentRole.category:
+            saga = sanitizeTitle(val);
+            break;
           case PathSegmentRole.universe:
             universe = val;
             break;

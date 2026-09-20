@@ -108,14 +108,10 @@ class _PathStructureSelectorDialogState
         // Fallback default heuristic: 0 -> author, 1 -> universe/saga, 2 -> saga/title, ...
         if (i == 0) {
           defaultRoles.add(PathSegmentRole.author);
-        } else if (i == 1 && segments.length > 3) {
-          defaultRoles.add(PathSegmentRole.universe);
-        } else if (i == segments.length - 2 && segments.length >= 3) {
-          defaultRoles.add(PathSegmentRole.saga);
         } else if (i == segments.length - 1) {
           defaultRoles.add(PathSegmentRole.bookTitle);
         } else {
-          defaultRoles.add(PathSegmentRole.ignore);
+          defaultRoles.add(PathSegmentRole.category);
         }
       }
     }
@@ -268,7 +264,11 @@ class _PathStructureSelectorDialogState
                             const SizedBox(width: 12),
                             DropdownButton<PathSegmentRole>(
                               dropdownColor: const Color(0xFF333333),
-                              value: currentRole,
+                              value: (currentRole == PathSegmentRole.universe ||
+                                      currentRole == PathSegmentRole.saga ||
+                                      currentRole == PathSegmentRole.era)
+                                  ? PathSegmentRole.category
+                                  : currentRole,
                               onChanged: (newRole) {
                                 if (newRole != null) {
                                   setState(() {
@@ -276,7 +276,13 @@ class _PathStructureSelectorDialogState
                                   });
                                 }
                               },
-                              items: PathSegmentRole.values.map((role) {
+                              items: [
+                                PathSegmentRole.author,
+                                PathSegmentRole.category,
+                                PathSegmentRole.bookTitle,
+                                PathSegmentRole.part,
+                                PathSegmentRole.ignore,
+                              ].map((role) {
                                 return DropdownMenuItem(
                                   value: role,
                                   child: Text(

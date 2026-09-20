@@ -1,22 +1,22 @@
 enum PathSegmentRole {
   author,
-  universe,
-  saga,
-  era,
+  category,
   bookTitle,
   part,
-  ignore;
+  ignore,
+  universe,
+  saga,
+  era;
 
   String get label {
     switch (this) {
       case PathSegmentRole.author:
         return 'Autor';
+      case PathSegmentRole.category:
       case PathSegmentRole.universe:
-        return 'Universo';
       case PathSegmentRole.saga:
-        return 'Saga / Serie';
       case PathSegmentRole.era:
-        return 'Era';
+        return 'Categoría / Subcategoría';
       case PathSegmentRole.bookTitle:
         return 'Título de Libro';
       case PathSegmentRole.part:
@@ -45,10 +45,16 @@ class PathPatternRule {
 
   factory PathPatternRule.fromJson(Map<String, dynamic> json) {
     final rolesList = (json['roles'] as List<dynamic>?)
-            ?.map((e) => PathSegmentRole.values.firstWhere(
-                  (r) => r.name == e.toString(),
-                  orElse: () => PathSegmentRole.ignore,
-                ))
+            ?.map((e) {
+              final str = e.toString();
+              if (str == 'universe' || str == 'saga' || str == 'era') {
+                return PathSegmentRole.category;
+              }
+              return PathSegmentRole.values.firstWhere(
+                (r) => r.name == str,
+                orElse: () => PathSegmentRole.ignore,
+              );
+            })
             .toList() ??
         [];
     return PathPatternRule(

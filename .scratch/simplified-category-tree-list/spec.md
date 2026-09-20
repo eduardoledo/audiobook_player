@@ -2,20 +2,28 @@
 
 ## Problem Statement
 
-The main library list rendering in `_buildAudiobookList` and `_buildEbookList` previously relied on legacy map grouping (`_groupAudiobooks`) and separate ordering attributes (`universe`, `universeOrder`, `saga`, `seriesSequence`). This created redundant code paths, duplicated sorting logic, and legacy UI structures that did not cleanly reflect the SQLite Nested Set `categories` tree.
+The main library list rendering in `_buildAudiobookList` and `_buildEbookList` previously relied on legacy map grouping (`_groupAudiobooks`) and separate ordering attributes (`universe`, `universeOrder`, `saga`, `seriesSequence`). Additionally, the `PathStructureSelectorDialog` and `PathSegmentRole` enum exposed obsolete role labels (`universe`, `saga`, `era`) that do not fit the unified SQLite Nested Set category system.
 
 ## Solution
 
-Refactor both `_buildAudiobookList` and `_buildEbookList` to render directly from the SQLite `categories` Nested Set table across collapsible levels, completely removing legacy map grouping and references to `universe`/`saga` UI wrappers. Add `parentOrder` property to the `Ebook` model for unified ordering across both library views.
+Refactor both `_buildAudiobookList` and `_buildEbookList` to render directly from the SQLite `categories` Nested Set table across collapsible levels. Update `PathSegmentRole` to replace obsolete roles (`universe`, `saga`, `era`) with a unified `category` role ("Categoría / Subcategoría") and adapt `PathStructureSelectorDialog`. Add automatic SQLite migration for saved pattern rules.
 
 ## User Stories
 
 1. As a user, I want to browse both my audiobooks and eBooks grouped under Authors as the level-0 virtual root, with nested categories displayed beneath each author.
 2. As a user, I want uncategorized audiobooks and eBooks for a specific author to appear at the top of that author's section before their subcategories.
 3. As a user, I want books without an assigned author to appear in a "Sin categoría" fallback group at the end of the entire list.
-4. As a user, I want categories and books (both audiobooks and eBooks) sorted by `parentOrder` first and title/name naturally second, with no forced numerical prefixes in titles by default.
+4. As a user, I want categories and books (both audiobooks and eBooks) sorted by `parentOrder` first and title/name naturally second.
+5. As a user, I want to configure directory path patterns using clear category roles ("Categoría / Subcategoría") in the `PathStructureSelectorDialog`.
 
 ## Implementation Decisions
+
+- **PathSegmentRole & PathStructureSelectorDialog Updates**:
+  - Update `PathSegmentRole` enum: replace `universe`, `saga`, `era` with `category` ("Categoría / Subcategoría").
+  - Update default heuristic in `PathStructureSelectorDialog` to assign `category` for all intermediate path segments between `author` and `bookTitle`.
+
+- **SQLite Rule Migration**:
+  - Add migration logic in `LibraryStorage` when reading/upgrading path pattern rules to transform legacy JSON strings (`'universe'`, `'saga'`, `'era'`) to `'category'`.
 
 - **Model Updates**:
   - Add `parentOrder` (`double?`) property to `Ebook` model, constructor, `fromJson`, `toJson`, and `copyWith`.
@@ -40,9 +48,10 @@ Refactor both `_buildAudiobookList` and `_buildEbookList` to render directly fro
 ## Testing Decisions
 
 - **Testing Seams**:
+  - `PathSegmentRole` / `PathStructureSelectorDialog` widget tests: Verify selection of `category` role and migration of legacy saved rules.
   - `Ebook` model unit tests: Verify `parentOrder` field serialization/deserialization.
   - `HomeScreen` widget seam: Verify author level 0 tiles and nested category subtrees in both `_buildAudiobookList` and `_buildEbookList`.
 
 ## Out of Scope
 
-- Altering the `PathStructureSelectorDialog` UI layout.
+- None.

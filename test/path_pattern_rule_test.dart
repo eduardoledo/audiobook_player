@@ -65,7 +65,23 @@ void main() {
       expect(restored.rootPath, equals('/audiobooks'));
       expect(restored.roles, equals([
         PathSegmentRole.author,
-        PathSegmentRole.saga,
+        PathSegmentRole.category,
+        PathSegmentRole.bookTitle,
+      ]));
+    });
+
+    test('migrates legacy JSON roles (universe, saga, era) to PathSegmentRole.category', () {
+      final legacyJson = {
+        'rootPath': '/audiobooks',
+        'roles': ['author', 'universe', 'saga', 'era', 'bookTitle'],
+      };
+
+      final restored = PathPatternRule.fromJson(legacyJson);
+      expect(restored.roles, equals([
+        PathSegmentRole.author,
+        PathSegmentRole.category,
+        PathSegmentRole.category,
+        PathSegmentRole.category,
         PathSegmentRole.bookTitle,
       ]));
     });

@@ -482,6 +482,10 @@ class AudiobookScanner {
           case PathSegmentRole.author:
             author = val;
             break;
+          case PathSegmentRole.category:
+            saga = val;
+            orderSegs.add(val);
+            break;
           case PathSegmentRole.universe:
             universe = val;
             break;
