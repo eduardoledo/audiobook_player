@@ -5,9 +5,9 @@ Refactor `AudiobookScanner` to delegate all path tokenization, positional segmen
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `AudiobookScanner` delegates folder classification to `PathMetadataParser.looksLikeEraFolder`, `looksLikeDiscPartFolder`, and `partOrderFromFolderName`
-- [ ] `AudiobookScanner` uses `PathMetadataParser.parsePath()` for extracting author, universe, saga, and title
-- [ ] Support for passing `SegmentPathMapping` in scanner configuration
-- [ ] All existing scanner integration tests pass cleanly
+- [x] `AudiobookScanner` delegates folder classification to `PathMetadataParser.looksLikeEraFolder`, `looksLikeDiscPartFolder`, and `partOrderFromFolderName`
+- [x] `AudiobookScanner` uses `PathMetadataParser.parsePath()` for extracting author, universe, saga, and title
+- [x] Support for passing `SegmentPathMapping` in scanner configuration
+- [x] All existing scanner integration tests pass cleanly
