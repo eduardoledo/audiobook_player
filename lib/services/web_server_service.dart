@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/services.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
@@ -237,7 +238,28 @@ class WebServerService {
 
     app.get('/<file|.*>', (Request request) async {
       final path = request.url.path.isEmpty ? 'index.html' : request.url.path;
-      final file = File('assets/web_remote/$path');
+      final assetKey = 'assets/web_remote/$path';
+
+      // 1. Try loading via rootBundle (production Flutter app)
+      try {
+        final byteData = await rootBundle.load(assetKey);
+        final bytes = byteData.buffer.asUint8List();
+        return Response.ok(
+          bytes,
+          headers: {
+            'content-type': path.endsWith('.html')
+                ? 'text/html; charset=utf-8'
+                : path.endsWith('.js')
+                    ? 'application/javascript'
+                    : path.endsWith('.css')
+                        ? 'text/css'
+                        : 'application/octet-stream',
+          },
+        );
+      } catch (_) {}
+
+      // 2. Try loading via File (unit tests environment)
+      final file = File(assetKey);
       if (file.existsSync()) {
         return Response.ok(
           file.openRead(),
@@ -252,6 +274,17 @@ class WebServerService {
           },
         );
       }
+
+      // 3. Fallback to index.html for SPA routes via rootBundle or File
+      try {
+        final indexByteData = await rootBundle.load('assets/web_remote/index.html');
+        final indexBytes = indexByteData.buffer.asUint8List();
+        return Response.ok(
+          indexBytes,
+          headers: {'content-type': 'text/html; charset=utf-8'},
+        );
+      } catch (_) {}
+
       final indexFile = File('assets/web_remote/index.html');
       if (indexFile.existsSync()) {
         return Response.ok(
@@ -259,6 +292,7 @@ class WebServerService {
           headers: {'content-type': 'text/html; charset=utf-8'},
         );
       }
+
       return Response.notFound('Page not found');
     });
 
