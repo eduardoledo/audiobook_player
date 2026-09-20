@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:audiobook_player/models/category_node.dart';
 import 'package:audiobook_player/models/audiobook.dart';
+import 'package:audiobook_player/models/ebook.dart';
 
 void main() {
   group('Ticket 01: CategoryNode & Audiobook Model Tests', () {
@@ -56,6 +57,24 @@ void main() {
       final serialized = book.toJson();
       expect(serialized['categoryId'], equals(42));
       expect(serialized['parentOrder'], equals(1.5));
+    });
+
+    test('Ebook serializes and deserializes categoryId and parentOrder', () {
+      final json = {
+        'title': 'Elantris',
+        'author': 'Brandon Sanderson',
+        'file': '/path/to/elantris.epub',
+        'categoryId': 10,
+        'parentOrder': 3.5,
+      };
+
+      final ebook = Ebook.fromJson(json, '/path/to');
+      expect(ebook.categoryId, equals(10));
+      expect(ebook.parentOrder, equals(3.5));
+
+      final serialized = ebook.toJson();
+      expect(serialized['categoryId'], equals(10));
+      expect(serialized['parentOrder'], equals(3.5));
     });
   });
 }

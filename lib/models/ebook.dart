@@ -14,6 +14,7 @@ class Ebook {
   final bool isRead;
   final bool hasMetadataLocally;
   final int? categoryId;
+  final double? parentOrder;
 
   const Ebook({
     required this.path,
@@ -29,6 +30,7 @@ class Ebook {
     this.isRead = false,
     this.hasMetadataLocally = false,
     this.categoryId,
+    this.parentOrder,
   });
 
   Ebook copyWith({
@@ -45,6 +47,7 @@ class Ebook {
     bool? isRead,
     bool? hasMetadataLocally,
     int? categoryId,
+    double? parentOrder,
   }) {
     return Ebook(
       path: path ?? this.path,
@@ -60,11 +63,20 @@ class Ebook {
       isRead: isRead ?? this.isRead,
       hasMetadataLocally: hasMetadataLocally ?? this.hasMetadataLocally,
       categoryId: categoryId ?? this.categoryId,
+      parentOrder: parentOrder ?? this.parentOrder,
     );
   }
 
   factory Ebook.fromJson(Map<String, dynamic> json, String basePath) {
     final rawUniverse = json['universe'] as String?;
+    final rawParentOrder = json['parentOrder'] ?? json['parent_order'];
+    double? parentOrder;
+    if (rawParentOrder is num) {
+      parentOrder = rawParentOrder.toDouble();
+    } else if (rawParentOrder != null) {
+      parentOrder = double.tryParse(rawParentOrder.toString());
+    }
+
     return Ebook(
       path: basePath,
       title: json['title'] as String? ?? 'Unknown',
@@ -81,6 +93,7 @@ class Ebook {
       isRead: json['isRead'] as bool? ?? false,
       hasMetadataLocally: json['hasMetadataLocally'] as bool? ?? false,
       categoryId: json['categoryId'] as int?,
+      parentOrder: parentOrder,
     );
   }
 
@@ -98,6 +111,7 @@ class Ebook {
         'isRead': isRead,
         'hasMetadataLocally': hasMetadataLocally,
         'categoryId': categoryId,
+        if (parentOrder != null) 'parentOrder': parentOrder,
       };
 
   bool get isPdf => file.toLowerCase().endsWith('.pdf');

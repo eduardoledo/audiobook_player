@@ -1042,14 +1042,73 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
     final ebooks = ebooksToDisplay ?? state.ebooks;
     if (ebooks.isEmpty) return const SizedBox.shrink();
 
-    final Map<String, Map<String?, Map<String?, List<Ebook>>>> grouped = {};
-    for (var book in ebooks) {
-      grouped.putIfAbsent(book.author, () => {});
-      grouped[book.author]!.putIfAbsent(book.universe, () => {});
-      grouped[book.author]![book.universe]!.putIfAbsent(book.series, () => []);
-      grouped[book.author]![book.universe]![book.series]!.add(book);
+    final categories = state.categories;
+
+    // Group ebooks by author
+    final Map<String, List<Ebook>> ebooksByAuthor = {};
+    final List<Ebook> uncategorizedAuthorless = [];
+
+    for (final book in ebooks) {
+      final author = book.author.trim();
+      if (author.isEmpty || author.toLowerCase() == 'unknown') {
+        uncategorizedAuthorless.add(book);
+      } else {
+        ebooksByAuthor.putIfAbsent(author, () => []).add(book);
+      }
     }
-    final authors = grouped.keys.toList()..sort(_naturalCompare);
+
+    final authors = ebooksByAuthor.keys.toList()..sort(_naturalCompare);
+
+    int compareSortable(
+      double? orderA,
+      String titleA,
+      double? orderB,
+      String titleB,
+    ) {
+      if (orderA != null && orderB != null) {
+        final cmp = orderA.compareTo(orderB);
+        if (cmp != 0) return cmp;
+      } else if (orderA != null) {
+        return -1;
+      } else if (orderB != null) {
+        return 1;
+      }
+      return _naturalCompare(titleA, titleB);
+    }
+
+    Widget buildCategoryTile(CategoryNode node, List<Ebook> allBooks, int depthLevel) {
+      final nodeBooks = allBooks.where((b) => b.categoryId == node.id).toList();
+      nodeBooks.sort((a, b) => compareSortable(a.parentOrder, a.title, b.parentOrder, b.title));
+
+      final childNodes = categories.where((c) => c.parentId == node.id).toList();
+      childNodes.sort((a, b) => compareSortable(a.parentOrder, a.name, b.parentOrder, b.name));
+
+      final childrenWidgets = <Widget>[
+        ...nodeBooks.map((b) => _buildEbookTile(context, state, b)),
+        ...childNodes.map((c) => buildCategoryTile(c, allBooks, depthLevel + 1)),
+      ];
+
+      final double leftPadding = (32 + (depthLevel * 16)).toDouble();
+
+      return Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: true,
+          tilePadding: EdgeInsets.only(left: leftPadding, right: 16),
+          iconColor: Colors.white70,
+          collapsedIconColor: Colors.white54,
+          title: Text(
+            node.name,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+            ),
+          ),
+          children: childrenWidgets,
+        ),
+      );
+    }
 
     return Column(
       children: [
@@ -1067,148 +1126,52 @@ class _HomeScreenViewState extends State<_HomeScreenView> {
             },
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: authors.length,
+              itemCount: authors.length + (uncategorizedAuthorless.isNotEmpty ? 1 : 0),
               itemBuilder: (context, index) {
-                final author = authors[index];
-                final universeMap = grouped[author]!;
-                final universeKeys = universeMap.keys.toList()
-                  ..sort((a, b) => _naturalCompare(a ?? '', b ?? ''));
+                if (index < authors.length) {
+                  final author = authors[index];
+                  final authorBooks = ebooksByAuthor[author]!;
 
-                return ExpansionTile(
-                  initiallyExpanded: true,
-                  iconColor: const Color(0xFFE8B86D),
-                  collapsedIconColor: Colors.white70,
-                  title: Text(
-                    author,
-                    style: const TextStyle(
-                      color: Color(0xFFE8B86D),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                  final uncategorizedBooks = authorBooks.where((b) => b.categoryId == null).toList();
+                  uncategorizedBooks.sort((a, b) => compareSortable(a.parentOrder, a.title, b.parentOrder, b.title));
+
+                  final rootCategories = categories.where((c) => c.parentId == null && c.pathPrefix.startsWith(author)).toList();
+                  rootCategories.sort((a, b) => compareSortable(a.parentOrder, a.name, b.parentOrder, b.name));
+
+                  return ExpansionTile(
+                    initiallyExpanded: true,
+                    iconColor: const Color(0xFFE8B86D),
+                    collapsedIconColor: Colors.white70,
+                    title: Text(
+                      author,
+                      style: const TextStyle(
+                        color: Color(0xFFE8B86D),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
-                  ),
-                  children: universeKeys.map((universe) {
-                    final seriesMap = universeMap[universe]!;
-                    final seriesKeys = seriesMap.keys.toList()
-                      ..sort((a, b) => _naturalCompare(a ?? '', b ?? ''));
-
-                    final seriesChildren = seriesKeys.map((series) {
-                      final books = seriesMap[series]!;
-                      books.sort((a, b) {
-                        if (a.seriesSequence != null &&
-                            b.seriesSequence != null) {
-                          final numA = double.tryParse(a.seriesSequence!);
-                          final numB = double.tryParse(b.seriesSequence!);
-                          if (numA != null && numB != null) {
-                            return numA.compareTo(numB);
-                          }
-                          return _naturalCompare(
-                            a.seriesSequence!,
-                            b.seriesSequence!,
-                          );
-                        } else if (a.seriesSequence != null) {
-                          return -1;
-                        } else if (b.seriesSequence != null) {
-                          return 1;
-                        }
-
-                        if (a.publishYear != null && b.publishYear != null) {
-                          final numA = int.tryParse(a.publishYear!);
-                          final numB = int.tryParse(b.publishYear!);
-                          if (numA != null && numB != null) {
-                            return numA.compareTo(numB);
-                          }
-                          return a.publishYear!.compareTo(b.publishYear!);
-                        } else if (a.publishYear != null) {
-                          return -1;
-                        } else if (b.publishYear != null) {
-                          return 1;
-                        }
-
-                        return _naturalCompare(a.title, b.title);
-                      });
-
-                      if (series != null) {
-                        return Theme(
-                          data: Theme.of(
-                            context,
-                          ).copyWith(dividerColor: Colors.transparent),
-                          child: ExpansionTile(
-                            initiallyExpanded: true,
-                            tilePadding: const EdgeInsets.only(
-                              left: 32,
-                              right: 16,
-                            ),
-                            iconColor: Colors.white70,
-                            collapsedIconColor: Colors.white54,
-                            title: Text(
-                              series,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 15,
-                              ),
-                            ),
-                            children: books.map((book) {
-                              final prefix = book.seriesSequence != null
-                                  ? '${book.seriesSequence} - '
-                                  : (book.publishYear != null
-                                        ? '${book.publishYear} - '
-                                        : '');
-                              return _buildEbookTile(
-                                context,
-                                state,
-                                book,
-                                prefix: prefix,
-                              );
-                            }).toList(),
-                          ),
-                        );
-                      } else {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: books
-                              .map(
-                                (book) => _buildEbookTile(context, state, book),
-                              )
-                              .toList(),
-                        );
-                      }
-                    }).toList();
-
-                    if (universe != null) {
-                      return Theme(
-                        data: Theme.of(
-                          context,
-                        ).copyWith(dividerColor: Colors.transparent),
-                        child: ExpansionTile(
-                          initiallyExpanded: true,
-                          tilePadding: const EdgeInsets.only(
-                            left: 24,
-                            right: 16,
-                          ),
-                          iconColor: const Color(
-                            0xFFE8B86D,
-                          ).withValues(alpha: 0.8),
-                          collapsedIconColor: Colors.white60,
-                          title: Text(
-                            'Universo: $universe',
-                            style: const TextStyle(
-                              color: Color(0xFFE8B86D),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 16,
-                            ),
-                          ),
-                          children: seriesChildren,
-                        ),
-                      );
-                    } else {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: seriesChildren,
-                      );
-                    }
-                  }).toList(),
-                );
+                    children: [
+                      ...uncategorizedBooks.map((b) => _buildEbookTile(context, state, b)),
+                      ...rootCategories.map((c) => buildCategoryTile(c, authorBooks, 0)),
+                    ],
+                  );
+                } else {
+                  uncategorizedAuthorless.sort((a, b) => compareSortable(a.parentOrder, a.title, b.parentOrder, b.title));
+                  return ExpansionTile(
+                    initiallyExpanded: true,
+                    iconColor: Colors.white70,
+                    collapsedIconColor: Colors.white54,
+                    title: const Text(
+                      'Sin categoría',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    children: uncategorizedAuthorless.map((b) => _buildEbookTile(context, state, b)).toList(),
+                  );
+                }
               },
             ),
           ),
