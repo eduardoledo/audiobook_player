@@ -138,5 +138,13 @@ void main() {
       expect(approvedResp.statusCode, equals(200));
       expect(approvedResp.body, contains('token'));
     });
+
+    test('serves Web SPA index.html at root route', () async {
+      await serverService.start(port: 9882);
+
+      final response = await http.get(Uri.parse('http://127.0.0.1:9882/'));
+      expect(response.statusCode, equals(200));
+      expect(response.body, contains('Audiobook Player Web Remote'));
+    });
   });
 }

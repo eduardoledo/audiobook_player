@@ -10,8 +10,8 @@ Build a modern HTML5/CSS/JS Web SPA embedded in Flutter assets that provides rea
 
 ## Tasks
 
-- [ ] Create `assets/web_remote/` SPA with responsive layout, player controller bar, and dark theme.
-- [ ] Connect Web SPA WebSocket to `/ws/playback` for real-time play/pause, seek, chapter, and progress updates.
-- [ ] Build Nested Set category library tree view rendering audiobooks and eBooks.
-- [ ] Implement drag-and-drop file upload zone sending files to `/api/upload`.
-- [ ] Configure Flutter asset bundle and `shelf_static` asset handler to serve the Web SPA.
+- [x] Create `assets/web_remote/` SPA with responsive layout, player controller bar, and dark theme.
+- [x] Connect Web SPA WebSocket to `/ws/playback` for real-time play/pause, seek, chapter, and progress updates.
+- [x] Build Nested Set category library tree view rendering audiobooks and eBooks.
+- [x] Implement drag-and-drop file upload zone sending files to `/api/upload`.
+- [x] Configure Flutter asset bundle and `shelf_static` asset handler to serve the Web SPA.

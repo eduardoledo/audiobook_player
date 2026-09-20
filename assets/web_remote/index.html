@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Audiobook Player Remote</title>
+    <style>
+      :root {
+        --bg-primary: #121218;
+        --bg-surface: #1e1e28;
+        --accent: #7c4dff;
+        --accent-hover: #651fff;
+        --text-main: #f3f3f7;
+        --text-muted: #a0a0b2;
+        --border: #2e2e3e;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family:
+          "Segoe UI",
+          system-ui,
+          -apple-system,
+          sans-serif;
+      }
+
+      body {
+        background-color: var(--bg-primary);
+        color: var(--text-main);
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
+
+      header {
+        background-color: var(--bg-surface);
+        padding: 1rem 2rem;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      header h1 {
+        font-size: 1.25rem;
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .container {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 1.5rem;
+        padding: 1.5rem;
+        flex: 1;
+      }
+
+      .card {
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.25rem;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .card h2 {
+        font-size: 1rem;
+        margin-bottom: 1rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      #auth-panel {
+        max-width: 400px;
+        margin: 4rem auto;
+        text-align: center;
+      }
+
+      input[type="text"] {
+        background: var(--bg-primary);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 0.75rem;
+        border-radius: 6px;
+        font-size: 1.2rem;
+        letter-spacing: 0.2rem;
+        text-align: center;
+        width: 100%;
+        margin-bottom: 1rem;
+      }
+
+      button {
+        background: var(--accent);
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+
+      button:hover {
+        background: var(--accent-hover);
+      }
+
+      .drop-zone {
+        border: 2px dashed var(--border);
+        border-radius: 8px;
+        padding: 2rem;
+        text-align: center;
+        color: var(--text-muted);
+        cursor: pointer;
+        margin-top: 1rem;
+        transition: border-color 0.2s;
+      }
+
+      .drop-zone.dragover {
+        border-color: var(--accent);
+        background: rgba(124, 77, 255, 0.05);
+      }
+
+      .player-controls {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        justify-content: center;
+        margin-top: 1rem;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1><span>🎧</span> Audiobook Player Web Remote</h1>
+      <div id="status-badge">Desconectado</div>
+    </header>
+
+    <div id="auth-panel" class="card">
+      <h2>Ingresa PIN de Vinculación</h2>
+      <p style="margin-bottom: 1rem; color: var(--text-muted)">
+        Ingresa el PIN de 4 dígitos mostrado en tu teléfono móvil:
+      </p>
+      <input type="text" id="pin-input" maxlength="4" placeholder="0000" />
+      <button id="btn-login">Conectar</button>
+    </div>
+
+    <div id="app-content" class="container hidden">
+      <div class="card">
+        <h2>Biblioteca de Audiolibros</h2>
+        <div id="category-tree">Cargando biblioteca...</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 1.5rem">
+        <div class="card">
+          <h2>Control de Reproducción</h2>
+          <div id="now-playing" style="font-size: 1.1rem; font-weight: 600">
+            Sin reproducción activa
+          </div>
+          <div
+            id="now-author"
+            style="color: var(--text-muted); margin-bottom: 1rem"
+          >
+            -
+          </div>
+
+          <div class="player-controls">
+            <button id="btn-prev">⏮ Cap. Anterior</button>
+            <button
+              id="btn-play"
+              style="font-size: 1.2rem; padding: 0.8rem 2rem"
+            >
+              ▶ Reproducir
+            </button>
+            <button id="btn-next">⏭ Cap. Siguiente</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Subir Audiolibro / eBook al Teléfono</h2>
+          <div id="drop-zone" class="drop-zone">
+            Arrastra y suelta archivos de audio (.mp3, .m4b) o libros (.epub,
+            .pdf) aquí para subirlos al celular
+          </div>
+          <input type="file" id="file-input" class="hidden" multiple />
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let token = localStorage.getItem("remote_token");
+
+      document
+        .getElementById("btn-login")
+        .addEventListener("click", async () => {
+          const pin = document.getElementById("pin-input").value;
+          const resp = await fetch("/api/verify_pin", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: `pin=${pin}`,
+          });
+          const data = await resp.json();
+          if (data.status === "ok") {
+            token = data.token;
+            localStorage.setItem("remote_token", token);
+            initApp();
+          } else {
+            alert(data.message || "PIN Incorrecto");
+          }
+        });
+
+      function initApp() {
+        document.getElementById("auth-panel").classList.add("hidden");
+        document.getElementById("app-content").classList.remove("hidden");
+        document.getElementById("status-badge").innerText = "Conectado";
+
+        connectWebSocket();
+        loadLibrary();
+      }
+
+      function connectWebSocket() {
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        const ws = new WebSocket(
+          `${protocol}//${location.host}/ws/playback?token=${token}`
+        );
+        ws.onmessage = (event) => {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "playback") {
+            document.getElementById("now-playing").innerText =
+              msg.data.title || "Reproduciendo";
+            document.getElementById("now-author").innerText =
+              msg.data.author || "";
+          }
+        };
+      }
+
+      async function loadLibrary() {
+        const resp = await fetch("/api/library", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          document.getElementById("category-tree").innerText = JSON.stringify(
+            data,
+            null,
+            2
+          );
+        }
+      }
+
+      if (token) {
+        initApp();
+      }
+    </script>
+  </body>
+</html>

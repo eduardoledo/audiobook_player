@@ -218,6 +218,33 @@ class WebServerService {
       return wsHandler(request);
     });
 
+    app.get('/<file|.*>', (Request request) async {
+      final path = request.url.path.isEmpty ? 'index.html' : request.url.path;
+      final file = File('assets/web_remote/$path');
+      if (file.existsSync()) {
+        return Response.ok(
+          file.openRead(),
+          headers: {
+            'content-type': path.endsWith('.html')
+                ? 'text/html; charset=utf-8'
+                : path.endsWith('.js')
+                    ? 'application/javascript'
+                    : path.endsWith('.css')
+                        ? 'text/css'
+                        : 'application/octet-stream',
+          },
+        );
+      }
+      final indexFile = File('assets/web_remote/index.html');
+      if (indexFile.existsSync()) {
+        return Response.ok(
+          indexFile.openRead(),
+          headers: {'content-type': 'text/html; charset=utf-8'},
+        );
+      }
+      return Response.notFound('Page not found');
+    });
+
     // ignore: prefer_const_constructors
     final handler = Pipeline()
         .addMiddleware(logRequests())
