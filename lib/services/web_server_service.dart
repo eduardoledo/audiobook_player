@@ -310,10 +310,11 @@ class WebServerService {
   }
 
   Future<void> stop() async {
-    for (final socket in _sockets) {
+    final socketsToClose = List<WebSocketChannel>.from(_sockets);
+    _sockets.clear();
+    for (final socket in socketsToClose) {
       await socket.sink.close();
     }
-    _sockets.clear();
     await _server?.close(force: true);
     _server = null;
     _validTokens.clear();
