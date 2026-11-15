@@ -1,83 +1,80 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
+import 'package:just_audio/just_audio.dart';
 
 import '../models/audiobook.dart';
 import '../models/audio_eq_profile.dart';
 import '../service_locator.dart';
+import 'audio_engine.dart';
+import 'audiobook_scanner.dart';
 import 'library_storage.dart';
 
 /// Manages audio playback for audiobooks globally.
 class AudioPlayerService {
-  late final AudioPlayer _player;
-  AndroidEqualizer? _equalizer;
-  AndroidLoudnessEnhancer? _loudnessEnhancer;
+  final AudioEngine _engine;
+  final LibraryStorage? _storageOverride;
+  final Future<Duration?> Function(String filePath) fileDurationProbe;
   Audiobook? currentAudiobook;
   Timer? _progressTimer;
+  StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<int?>? _currentIndexSub;
+  StreamSubscription<AudioInterruptionEvent>? _interruptionSub;
 
   bool _wasInterrupted = false;
 
-  AudioPlayerService() {
-    _initPlayer();
-    // Guarda el progreso cada minuto de forma segura
-    _progressTimer = Timer.periodic(const Duration(minutes: 1), (_) => _saveProgress());
-    _initAudioSession();
+  AudioPlayerService({
+    AudioEngine? engine,
+    LibraryStorage? storage,
+    Future<Duration?> Function(String filePath)? fileDurationProbe,
+    bool enablePeriodicSave = true,
+  })  : _engine = engine ?? JustAudioEngine(),
+        _storageOverride = storage,
+        fileDurationProbe = fileDurationProbe ?? _defaultFileDurationProbe {
+    _initListeners();
+    if (enablePeriodicSave) {
+      // Guarda el progreso cada minuto de forma segura
+      _progressTimer = Timer.periodic(
+        const Duration(minutes: 1),
+        (_) => unawaited(_saveProgress()),
+      );
+    }
   }
 
-  void _initPlayer() {
-    if (Platform.isAndroid) {
-      try {
-        _equalizer = AndroidEqualizer();
-        _loudnessEnhancer = AndroidLoudnessEnhancer();
-        _player = AudioPlayer(
-          audioPipeline: AudioPipeline(
-            androidAudioEffects: [_equalizer!, _loudnessEnhancer!],
-          ),
-        );
-      } catch (_) {
-        _equalizer = null;
-        _loudnessEnhancer = null;
-        _player = AudioPlayer();
-      }
-    } else {
-      _equalizer = null;
-      _loudnessEnhancer = null;
-      _player = AudioPlayer();
-    }
-    
+  static Future<Duration?> _defaultFileDurationProbe(String filePath) async {
+    final meta = await AudiobookScanner.getAudioMetadata(File(filePath));
+    return meta?.duration;
+  }
+
+  LibraryStorage get _storage => _storageOverride ?? getIt<LibraryStorage>();
+
+  void _initListeners() {
     // Guardar progreso al pausar
-    _player.playerStateStream.listen((state) {
+    _playerStateSub = _engine.playerStateStream.listen((state) {
       if (!state.playing) {
-        _saveProgress();
+        unawaited(_saveProgress());
       }
     });
 
     // Guardar progreso al cambiar de capítulo y verificar temporizador
-    _player.currentIndexStream.listen((index) {
+    _currentIndexSub = _engine.currentIndexStream.listen((index) {
       if (index != null) {
-        _saveProgress();
+        unawaited(_saveProgress());
         if (_sleepAtChapterEnd) {
           cancelSleepTimer();
           unawaited(pause());
         }
       }
     });
-  }
 
-  Future<void> _initAudioSession() async {
-    final session = await AudioSession.instance;
-    await session.configure(const AudioSessionConfiguration.speech());
-    
-    session.interruptionEventStream.listen((event) {
+    _interruptionSub = _engine.interruptionEventStream.listen((event) {
       if (event.begin) {
         switch (event.type) {
           case AudioInterruptionType.duck:
           case AudioInterruptionType.pause:
           case AudioInterruptionType.unknown:
-            if (_player.playing) {
+            if (_engine.playing) {
               _wasInterrupted = true;
             }
             break;
@@ -99,6 +96,7 @@ class AudioPlayerService {
 
   bool _isSavingProgress = false;
   bool _suppressProgressSave = false;
+
   /// When true, the next [play] from a paused position rewinds by [resumeRewind].
   /// Cleared after a resume seek in [setAudiobook] so open+play does not double-rewind.
   bool _rewindOnNextPlay = true;
@@ -106,20 +104,22 @@ class AudioPlayerService {
   Future<void> _saveProgress() async {
     if (currentAudiobook == null) return;
     if (_isSavingProgress || _suppressProgressSave) return;
-    
+
     try {
       _isSavingProgress = true;
-      final chapterIndex = _player.currentIndex ?? 0;
-      final positionMs = _player.position.inMilliseconds;
-      await getIt<LibraryStorage>().savePlaybackProgress(currentAudiobook!.path, chapterIndex, positionMs);
+      final chapterIndex = _engine.currentIndex ?? 0;
+      final positionMs = _engine.position.inMilliseconds;
+      await _storage.savePlaybackProgress(
+        currentAudiobook!.path,
+        chapterIndex,
+        positionMs,
+      );
     } catch (e) {
       debugPrint('Error saving progress: $e');
     } finally {
       _isSavingProgress = false;
     }
   }
-
-  AudioPlayer get player => _player;
 
   /// How far to rewind when resuming from a saved or paused position.
   static const Duration resumeRewind = Duration(seconds: 1);
@@ -130,16 +130,16 @@ class AudioPlayerService {
     return saved - resumeRewind;
   }
 
-  Stream<Duration> get positionStream => _player.positionStream;
-  Stream<Duration?> get durationStream => _player.durationStream;
-  Stream<PlayerState> get playerStateStream => _player.playerStateStream;
-  Stream<int?> get currentIndexStream => _player.currentIndexStream;
+  Stream<Duration> get positionStream => _engine.positionStream;
+  Stream<Duration?> get durationStream => _engine.durationStream;
+  Stream<PlayerState> get playerStateStream => _engine.playerStateStream;
+  Stream<int?> get currentIndexStream => _engine.currentIndexStream;
 
-  bool get playing => _player.playing;
+  bool get playing => _engine.playing;
 
-  Duration get position => _player.position;
-  Duration? get duration => _player.duration;
-  PlayerState get playerState => _player.playerState;
+  Duration get position => _engine.position;
+  Duration? get duration => _engine.duration;
+  PlayerState get playerState => _engine.playerState;
 
   Future<void> setAudiobook(
     Audiobook audiobook, {
@@ -148,30 +148,29 @@ class AudioPlayerService {
     bool rewindForResume = false,
   }) async {
     currentAudiobook = audiobook;
-    unawaited(getIt<LibraryStorage>().saveLastPlayedBook(audiobook.path));
+    unawaited(_storage.saveLastPlayedBook(audiobook.path));
 
     // Asynchronously load and apply settings
     unawaited(_loadAndApplyAudioSettings(audiobook.path));
 
-    final displayTitle = (audiobook.series != null && audiobook.series!.isNotEmpty)
-        ? '${audiobook.series} - ${audiobook.title}'
-        : audiobook.title;
+    final displayTitle =
+        (audiobook.series != null && audiobook.series!.isNotEmpty)
+            ? '${audiobook.series} - ${audiobook.title}'
+            : audiobook.title;
 
-    final playlist = audiobook.files.asMap().entries.map((entry) {
+    final tracks = audiobook.files.asMap().entries.map((entry) {
       final index = entry.key;
       final path = entry.value;
       final title = index < audiobook.chapters.length
           ? audiobook.chapters[index].title
           : 'Chapter ${index + 1}';
 
-      return AudioSource.uri(
-        Uri.file(path),
-        tag: MediaItem(
-          id: '${audiobook.path}_$index',
-          album: title,
-          title: displayTitle,
-          artist: audiobook.author,
-        ),
+      return AudioTrackItem(
+        id: '${audiobook.path}_$index',
+        filePath: path,
+        album: title,
+        title: displayTitle,
+        artist: audiobook.author,
       );
     }).toList();
 
@@ -184,14 +183,14 @@ class AudioPlayerService {
     // Avoid persisting the rewound position as progress before the user plays.
     _suppressProgressSave = true;
     try {
-      await _player.setAudioSources(
-        playlist,
+      await _engine.setPlaylist(
+        tracks,
         initialIndex: chapterIndex,
         initialPosition: startPosition,
       );
       // Some backends ignore initialPosition; seek explicitly after load.
       if (startPosition > Duration.zero) {
-        await _player.seek(startPosition, index: chapterIndex);
+        await _engine.seek(startPosition, index: chapterIndex);
       }
     } finally {
       _suppressProgressSave = false;
@@ -200,11 +199,12 @@ class AudioPlayerService {
 
   Future<void> _loadAndApplyAudioSettings(String bookPath) async {
     try {
-      final settings = await getIt<LibraryStorage>().getBookAudioSettings(bookPath);
+      final settings = await _storage.getBookAudioSettings(bookPath);
       if (settings != null) {
         final eqPresetName = settings['eq_preset'] as String?;
         final loudnessEnabled = (settings['loudness_enabled'] as int?) == 1;
-        final loudnessGain = (settings['loudness_gain'] as num?)?.toDouble() ?? 3.0;
+        final loudnessGain =
+            (settings['loudness_gain'] as num?)?.toDouble() ?? 3.0;
 
         if (eqPresetName != null) {
           final preset = AudioEqPreset.presets.firstWhere(
@@ -214,12 +214,12 @@ class AudioPlayerService {
           await applyEqPreset(preset);
         }
 
-        if (_loudnessEnhancer != null) {
+        if (loudnessEnhancer != null) {
           await setLoudnessEnhancerGain(loudnessEnabled ? loudnessGain : 0.0);
         }
       } else {
         await applyEqPreset(AudioEqPreset.presets[0]);
-        if (_loudnessEnhancer != null) {
+        if (loudnessEnhancer != null) {
           await setLoudnessEnhancerGain(0.0);
         }
       }
@@ -235,7 +235,7 @@ class AudioPlayerService {
   }) async {
     final book = currentAudiobook;
     if (book == null) return;
-    await getIt<LibraryStorage>().saveBookAudioSettings(
+    await _storage.saveBookAudioSettings(
       bookPath: book.path,
       eqPreset: eqPreset,
       loudnessEnabled: loudnessEnabled,
@@ -247,35 +247,37 @@ class AudioPlayerService {
 
   Future<void> seekToChapter(Audiobook audiobook, int chapterIndex) async {
     if (chapterIndex >= 0 && chapterIndex < audiobook.chapters.length) {
-      await _player.seek(Duration.zero, index: chapterIndex);
+      await _engine.seek(Duration.zero, index: chapterIndex);
     }
   }
 
   Future<void> seekToPosition(Duration position) async {
-    await _player.seek(position);
+    await _engine.seek(position);
   }
 
   Future<void> play() async {
-    if (!_player.playing &&
-        _player.position > Duration.zero &&
+    if (!_engine.playing &&
+        _engine.position > Duration.zero &&
         _rewindOnNextPlay) {
       _suppressProgressSave = true;
       try {
-        await _player.seek(positionForResume(_player.position));
+        await _engine.seek(positionForResume(_engine.position));
       } finally {
         _suppressProgressSave = false;
       }
     }
     // After this play, the next pause→play should rewind again.
     _rewindOnNextPlay = true;
-    await _player.play();
+    await _engine.play();
   }
-  Future<void> pause() => _player.pause();
-  Future<void> stop() => _player.stop();
 
-  Future<void> setSpeed(double speed) => _player.setSpeed(speed);
-  double get speed => _player.speed;
-  Stream<double> get speedStream => _player.speedStream;
+  Future<void> pause() => _engine.pause();
+  Future<void> stop() => _engine.stop();
+
+  Future<void> setSpeed(double speed) => _engine.setSpeed(speed);
+  Future<void> setVolume(double volume) => _engine.setVolume(volume);
+  double get speed => _engine.speed;
+  Stream<double> get speedStream => _engine.speedStream;
 
   Timer? _sleepTimer;
   DateTime? _sleepTimerEndTime;
@@ -291,7 +293,8 @@ class AudioPlayerService {
     sleepTimeRemaining.value = duration;
 
     _sleepTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      final remaining = _sleepTimerEndTime?.difference(DateTime.now()) ?? Duration.zero;
+      final remaining =
+          _sleepTimerEndTime?.difference(DateTime.now()) ?? Duration.zero;
       if (remaining <= Duration.zero) {
         cancelSleepTimer();
         await _fadeAndPause();
@@ -316,25 +319,25 @@ class AudioPlayerService {
   }
 
   Future<void> _fadeAndPause() async {
-    if (_player.playing) {
-      final currentVol = _player.volume;
+    if (_engine.playing) {
+      final currentVol = _engine.volume;
       for (int i = 10; i >= 0; i--) {
         await Future<void>.delayed(const Duration(milliseconds: 150));
-        await _player.setVolume(currentVol * (i / 10.0));
+        await _engine.setVolume(currentVol * (i / 10.0));
       }
       await pause();
-      await _player.setVolume(currentVol);
+      await _engine.setVolume(currentVol);
     }
   }
 
   int? getCurrentChapterIndex(Audiobook audiobook) {
-    return _player.currentIndex;
+    return _engine.currentIndex;
   }
 
-  AndroidEqualizer? get equalizer => _equalizer;
+  AndroidEqualizer? get equalizer => _engine.equalizer;
 
   Future<void> applyEqPreset(AudioEqPreset preset) async {
-    final eq = _equalizer;
+    final eq = equalizer;
     if (eq == null) return;
     try {
       final parameters = await eq.parameters;
@@ -342,7 +345,7 @@ class AudioPlayerService {
       for (int i = 0; i < bands.length; i++) {
         final band = bands[i];
         final freq = band.centerFrequency;
-        
+
         // Map center frequency to our 5 abstract preset bands:
         // [Low (<150Hz), Mid-Low (150-500Hz), Mid (500-2000Hz), Mid-High (2000-8000Hz), High (>8000Hz)]
         double targetGain = 0.0;
@@ -357,11 +360,11 @@ class AudioPlayerService {
         } else {
           targetGain = preset.gains[4];
         }
-        
+
         final minGain = parameters.minDecibels;
         final maxGain = parameters.maxDecibels;
         final clampedGain = targetGain.clamp(minGain, maxGain);
-        
+
         await band.setGain(clampedGain);
       }
     } catch (e) {
@@ -370,7 +373,7 @@ class AudioPlayerService {
   }
 
   Future<void> setBandGain(int bandIndex, double gain) async {
-    final eq = _equalizer;
+    final eq = equalizer;
     if (eq == null) return;
     try {
       final parameters = await eq.parameters;
@@ -382,10 +385,10 @@ class AudioPlayerService {
     } catch (_) {}
   }
 
-  AndroidLoudnessEnhancer? get loudnessEnhancer => _loudnessEnhancer;
+  AndroidLoudnessEnhancer? get loudnessEnhancer => _engine.loudnessEnhancer;
 
   Future<void> setLoudnessEnhancerGain(double db) async {
-    final enhancer = _loudnessEnhancer;
+    final enhancer = loudnessEnhancer;
     if (enhancer == null) return;
     try {
       final mB = (db * 100.0);
@@ -395,7 +398,11 @@ class AudioPlayerService {
 
   void dispose() {
     _progressTimer?.cancel();
-    _saveProgress();
-    _player.dispose();
+    cancelSleepTimer();
+    unawaited(_saveProgress());
+    unawaited(_playerStateSub?.cancel());
+    unawaited(_currentIndexSub?.cancel());
+    unawaited(_interruptionSub?.cancel());
+    unawaited(_engine.dispose());
   }
 }

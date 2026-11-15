@@ -20,8 +20,15 @@ import '../widgets/player/playback_speed_sheet.dart';
 
 class PlayerScreen extends StatefulWidget {
   final Audiobook audiobook;
+  final AudioPlayerService? playerService;
+  final LibraryStorage? storage;
 
-  const PlayerScreen({super.key, required this.audiobook});
+  const PlayerScreen({
+    super.key,
+    required this.audiobook,
+    this.playerService,
+    this.storage,
+  });
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -38,8 +45,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void initState() {
     super.initState();
-    _storage = getIt<LibraryStorage>();
-    _playerService = getIt<AudioPlayerService>();
+    _storage = widget.storage ?? getIt<LibraryStorage>();
+    _playerService = widget.playerService ?? getIt<AudioPlayerService>();
     
     _initPlayer();
     unawaited(_loadBookmarks());
@@ -790,32 +797,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Widget _buildListSection(Audiobook audiobook) {
     return DefaultTabController(
       length: 2,
-      child: Container(
-        height: 300,
-        decoration: BoxDecoration(
-          color: const Color(0xFF252525),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            const TabBar(
-              indicatorColor: Color(0xFFE8B86D),
-              labelColor: Color(0xFFE8B86D),
-              unselectedLabelColor: Colors.white54,
-              tabs: [
-                Tab(text: 'Chapters'),
-                Tab(text: 'Bookmarks'),
-              ],
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _buildChaptersTab(audiobook),
-                  _buildBookmarksTab(),
+      child: Material(
+        color: const Color(0xFF252525),
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(
+          height: 300,
+          child: Column(
+            children: [
+              const TabBar(
+                indicatorColor: Color(0xFFE8B86D),
+                labelColor: Color(0xFFE8B86D),
+                unselectedLabelColor: Colors.white54,
+                tabs: [
+                  Tab(text: 'Chapters'),
+                  Tab(text: 'Bookmarks'),
                 ],
               ),
-            ),
-          ],
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _buildChaptersTab(audiobook),
+                    _buildBookmarksTab(),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -19,15 +19,27 @@ import '../services/ebook_metadata_fetcher.dart';
 import 'home_state.dart';
 
 class HomeCubit extends Cubit<HomeState> {
-  final LibraryStorage _storage = getIt<LibraryStorage>();
-  final AudiobookScanner _scanner = getIt<AudiobookScanner>();
+  final LibraryStorage _storage;
+  final AudiobookScanner _scanner;
+  final Future<AudioFileMetadata?> Function(String filePath)? _audioMetadataProbe;
   
   StreamSubscription<ScanMessage>? _scanSubscription;
 
-  HomeCubit() : super(const HomeState()) {
-    _initFetcher();
-    _initEbookFetcher();
-    loadData();
+  HomeCubit({
+    LibraryStorage? storage,
+    AudiobookScanner? scanner,
+    bool startBackgroundFetchers = true,
+    HomeState? initialState,
+    Future<AudioFileMetadata?> Function(String filePath)? audioMetadataProbe,
+  })  : _storage = storage ?? getIt<LibraryStorage>(),
+        _scanner = scanner ?? getIt<AudiobookScanner>(),
+        _audioMetadataProbe = audioMetadataProbe,
+        super(initialState ?? const HomeState()) {
+    if (startBackgroundFetchers) {
+      _initFetcher();
+      _initEbookFetcher();
+      loadData();
+    }
   }
 
   Future<void> _initFetcher() async {
@@ -570,6 +582,54 @@ class HomeCubit extends Cubit<HomeState> {
     }
   }
 
+  static Future<Map<String, Object>> _calculateChaptersWithProbe(
+    Audiobook book,
+    Future<AudioFileMetadata?> Function(String filePath) probe,
+  ) async {
+    double cumulativeStart = 0.0;
+    final List<Chapter> calculatedChapters = [];
+
+    for (int i = 0; i < book.files.length; i++) {
+      final path = book.files[i];
+      debugPrint('ensureChaptersCalculated: analyzing file [$i/${book.files.length}]: $path');
+      double fileDuration = 0.0;
+      try {
+        final meta = await probe(path);
+        fileDuration = meta?.durationInSeconds ?? 0.0;
+      } catch (_) {}
+
+      final parentDir = p.dirname(path);
+      final grandparentDir = p.dirname(parentDir);
+      String? partName;
+      if (grandparentDir == book.path) {
+        partName = p.basename(parentDir);
+      }
+
+      calculatedChapters.add(Chapter(
+        index: i,
+        start: cumulativeStart,
+        end: cumulativeStart + fileDuration,
+        duration: fileDuration,
+        startFormatted: AudiobookScanner.formatDuration(cumulativeStart),
+        endFormatted: AudiobookScanner.formatDuration(cumulativeStart + fileDuration),
+        durationFormatted: AudiobookScanner.formatDuration(fileDuration),
+        title: p.basenameWithoutExtension(path),
+        displayTitle: partName != null
+            ? '$partName - Chapter ${i + 1}'
+            : 'Chapter ${i + 1}',
+        part: partName,
+      ));
+
+      cumulativeStart += fileDuration;
+    }
+
+    final durationStr = AudiobookScanner.formatDuration(cumulativeStart);
+    return <String, Object>{
+      'durationFormatted': durationStr,
+      'chapters': calculatedChapters,
+    };
+  }
+
   Future<Audiobook> ensureChaptersCalculated(Audiobook book) async {
     // If durations are already calculated, do nothing
     final needsCalculation = book.chapters.isEmpty || book.chapters.every((c) => c.duration == 0.0);
@@ -578,57 +638,20 @@ class HomeCubit extends Cubit<HomeState> {
       return book;
     }
 
-    debugPrint('ensureChaptersCalculated: Starting duration/chapter calculation in isolate for ${book.path}');
-    final result = await Isolate.run(() async {
-      debugPrint('ensureChaptersCalculated isolate: scanning files for ${book.path}');
-      double cumulativeStart = 0.0;
-      final List<Chapter> calculatedChapters = [];
-      
-      for (int i = 0; i < book.files.length; i++) {
-        final path = book.files[i];
-        debugPrint('ensureChaptersCalculated isolate: analyzing file [$i/${book.files.length}]: $path');
-        double fileDuration = 0.0;
-        try {
-          final meta = await AudiobookScanner.getAudioMetadata(File(path));
-          fileDuration = meta?.durationInSeconds ?? 0.0;
-        } catch (_) {}
-        
-        final parentDir = p.dirname(path);
-        final grandparentDir = p.dirname(parentDir);
-        String? partName;
-        if (grandparentDir == book.path) {
-          partName = p.basename(parentDir);
-        }
-        
-        calculatedChapters.add(Chapter(
-          index: i,
-          start: cumulativeStart,
-          end: cumulativeStart + fileDuration,
-          duration: fileDuration,
-          startFormatted: AudiobookScanner.formatDuration(cumulativeStart),
-          endFormatted: AudiobookScanner.formatDuration(cumulativeStart + fileDuration),
-          durationFormatted: AudiobookScanner.formatDuration(fileDuration),
-          title: p.basenameWithoutExtension(path),
-          displayTitle: partName != null
-              ? '$partName - Chapter ${i + 1}'
-              : 'Chapter ${i + 1}',
-          part: partName,
-        ));
-        
-        cumulativeStart += fileDuration;
-      }
-
-      final durationStr = AudiobookScanner.formatDuration(cumulativeStart);
-      debugPrint('ensureChaptersCalculated isolate: completed. Total duration: $durationStr');
-      return {
-        'durationFormatted': durationStr,
-        'chapters': calculatedChapters,
-      };
-    });
+    debugPrint('ensureChaptersCalculated: Starting duration/chapter calculation for ${book.path}');
+    final probe = _audioMetadataProbe;
+    final result = probe != null
+        ? await _calculateChaptersWithProbe(book, probe)
+        : await Isolate.run(
+            () => _calculateChaptersWithProbe(
+              book,
+              (path) => AudiobookScanner.getAudioMetadata(File(path)),
+            ),
+          );
 
     final durationStr = result['durationFormatted'] as String;
     final calculatedChapters = result['chapters'] as List<Chapter>;
-    debugPrint('ensureChaptersCalculated: isolate finished, updating state and database');
+    debugPrint('ensureChaptersCalculated: finished, updating state and database');
 
     final updatedBook = book.copyWith(
       durationFormatted: durationStr,
@@ -644,17 +667,19 @@ class HomeCubit extends Cubit<HomeState> {
       await _storage.saveAudiobooks(currentBooks);
     }
 
-    // Also update book.metadata.json if it exists
-    try {
-      final metaFile = AudiobookScanner.getBookMetadataFile(book.path);
-      if (await metaFile.exists()) {
-        final content = await metaFile.readAsString();
-        final json = jsonDecode(content) as Map<String, dynamic>;
-        json['durationFormatted'] = durationStr;
-        json['chapters'] = calculatedChapters.map((c) => c.toJson()).toList();
-        await metaFile.writeAsString(jsonEncode(json));
-      }
-    } catch (_) {}
+    // Also update book.metadata.json if it exists (production disk path only)
+    if (probe == null) {
+      try {
+        final metaFile = AudiobookScanner.getBookMetadataFile(book.path);
+        if (await metaFile.exists()) {
+          final content = await metaFile.readAsString();
+          final json = jsonDecode(content) as Map<String, dynamic>;
+          json['durationFormatted'] = durationStr;
+          json['chapters'] = calculatedChapters.map((c) => c.toJson()).toList();
+          await metaFile.writeAsString(jsonEncode(json));
+        }
+      } catch (_) {}
+    }
 
     return updatedBook;
   }

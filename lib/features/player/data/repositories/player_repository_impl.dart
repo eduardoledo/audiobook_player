@@ -84,7 +84,7 @@ class PlayerRepositoryImpl implements PlayerRepository {
   Future<void> setSpeed(double speed) => _playerService.setSpeed(speed);
 
   @override
-  Future<void> setVolume(double volume) => _playerService.player.setVolume(volume);
+  Future<void> setVolume(double volume) => _playerService.setVolume(volume);
 
   @override
   Future<void> setSleepTimer(Duration duration) async {

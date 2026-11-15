@@ -14,9 +14,12 @@ import '../models/path_pattern_conflict_result.dart';
 
 /// Persists scan paths and audiobook library using SQLite.
 class LibraryStorage {
+  final String? _databasePathOverride;
   Database? _db;
 
   final Map<String, Database> _localDbs = {};
+
+  LibraryStorage({String? databasePath}) : _databasePathOverride = databasePath;
 
   Future<Database> _getLocalDatabase(String scanPath) async {
     if (_localDbs.containsKey(scanPath)) {
@@ -101,8 +104,8 @@ class LibraryStorage {
   Future<Database> get database async {
     if (_db != null) return _db!;
     
-    final dbPath = await getDatabasesPath();
-    final path = p.join(dbPath, 'audiobook_library.db');
+    final path = _databasePathOverride ??
+        p.join(await getDatabasesPath(), 'audiobook_library.db');
     
     _db = await openDatabase(
       path,
