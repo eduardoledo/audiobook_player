@@ -247,12 +247,55 @@ class AudioPlayerService {
 
   Future<void> seekToChapter(Audiobook audiobook, int chapterIndex) async {
     if (chapterIndex >= 0 && chapterIndex < audiobook.chapters.length) {
-      await _engine.seek(Duration.zero, index: chapterIndex);
+      if (audiobook.files.length <= 1) {
+        final startMs = (audiobook.chapters[chapterIndex].start * 1000).round();
+        await _engine.seek(Duration(milliseconds: startMs), index: 0);
+      } else {
+        await _engine.seek(Duration.zero, index: chapterIndex);
+      }
     }
   }
 
   Future<void> seekToPosition(Duration position) async {
     await _engine.seek(position);
+  }
+
+  Future<void> seekToBookPosition(
+    Audiobook audiobook,
+    Duration globalPosition,
+  ) async {
+    final targetGlobalMs =
+        globalPosition.inMilliseconds < 0 ? 0 : globalPosition.inMilliseconds;
+    _rewindOnNextPlay = false;
+
+    if (audiobook.files.length <= 1) {
+      final totalMs = (audiobook.chapters.fold<double>(
+                0.0,
+                (sum, c) => sum + c.duration,
+              ) *
+              1000)
+          .round();
+      final clampedMs =
+          totalMs > 0 ? targetGlobalMs.clamp(0, totalMs) : targetGlobalMs;
+      await _engine.seek(Duration(milliseconds: clampedMs), index: 0);
+      return;
+    }
+
+    var remainingMs = targetGlobalMs;
+    for (var i = 0; i < audiobook.files.length; i++) {
+      final fileDurMs = i < audiobook.chapters.length
+          ? (audiobook.chapters[i].duration * 1000).round()
+          : 0;
+      if ((fileDurMs > 0 && remainingMs < fileDurMs) ||
+          i == audiobook.files.length - 1) {
+        final localMs = fileDurMs > 0
+            ? remainingMs.clamp(0, fileDurMs)
+            : (remainingMs < 0 ? 0 : remainingMs);
+        await _engine.seek(Duration(milliseconds: localMs), index: i);
+        return;
+      }
+      remainingMs -= fileDurMs;
+    }
   }
 
   Future<void> play() async {
@@ -331,7 +374,56 @@ class AudioPlayerService {
   }
 
   int? getCurrentChapterIndex(Audiobook audiobook) {
+    if (audiobook.files.length <= 1 && audiobook.chapters.isNotEmpty) {
+      final chapter = resolveChapterForGlobalPosition(
+        audiobook,
+        _engine.position.inMilliseconds,
+      );
+      if (chapter == null) return 0;
+      final idx = audiobook.chapters.indexOf(chapter);
+      return idx >= 0 ? idx : 0;
+    }
     return _engine.currentIndex;
+  }
+
+  int getGlobalPositionMs(
+    Audiobook audiobook, {
+    int? trackIndex,
+    Duration? trackPosition,
+  }) {
+    final localPosMs = (trackPosition ?? _engine.position).inMilliseconds;
+    if (audiobook.files.length <= 1) {
+      return localPosMs;
+    }
+    final activeIndex = trackIndex ?? _engine.currentIndex ?? 0;
+    var precedingMs = 0;
+    for (var i = 0; i < activeIndex && i < audiobook.chapters.length; i++) {
+      precedingMs += (audiobook.chapters[i].duration * 1000).round();
+    }
+    return precedingMs + localPosMs;
+  }
+
+  Chapter? resolveChapterForGlobalPosition(
+    Audiobook audiobook,
+    int globalPositionMs,
+  ) {
+    if (audiobook.chapters.isEmpty) return null;
+    final globalSeconds = globalPositionMs / 1000.0;
+    var cumulativeStart = 0.0;
+    for (final chapter in audiobook.chapters) {
+      final hasExplicitRange = chapter.end > chapter.start;
+      final start = hasExplicitRange ? chapter.start : cumulativeStart;
+      final end =
+          hasExplicitRange ? chapter.end : cumulativeStart + chapter.duration;
+      cumulativeStart = end;
+      if (globalSeconds >= start && globalSeconds < end) {
+        return chapter;
+      }
+    }
+    if (globalSeconds < audiobook.chapters.first.start) {
+      return audiobook.chapters.first;
+    }
+    return audiobook.chapters.last;
   }
 
   AndroidEqualizer? get equalizer => _engine.equalizer;

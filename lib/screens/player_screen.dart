@@ -39,6 +39,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late final LibraryStorage _storage;
   bool _showChapters = false;
   List<Bookmark> _bookmarks = [];
+  Audiobook? _resolvedAudiobook;
   StreamSubscription<PlayerState>? _playerStateSubscription;
   bool _handlingCompletion = false;
 
@@ -193,6 +194,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     debugPrint('PlayerScreen: ensuring chapters are calculated...');
     final book = await cubit.ensureChaptersCalculated(widget.audiobook);
     if (!mounted) return;
+    setState(() => _resolvedAudiobook = book);
     debugPrint('PlayerScreen: chapters check completed, setting audiobook details');
 
     await _playerService.setAudiobook(
@@ -209,8 +211,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (mounted) setState(() => _bookmarks = b);
   }
 
-  Future<void> _addBookmark() async {
-    final posMs = _playerService.position.inMilliseconds;
+  Future<void> _addBookmark(Audiobook currentBook) async {
+    final cubit = context.read<HomeCubit>();
+    final trackIndex = _playerService.getCurrentChapterIndex(currentBook) ?? 0;
+    final localPosition = _playerService.position;
     final controller = TextEditingController();
     final label = await showDialog<String>(
       context: context,
@@ -242,6 +246,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
     
     if (label != null) {
+      final resolvedBook = await cubit.ensureChaptersCalculated(currentBook);
+      final posMs = _playerService.getGlobalPositionMs(
+        resolvedBook,
+        trackIndex: trackIndex,
+        trackPosition: localPosition,
+      );
       await _storage.addBookmark(
         Bookmark(
           bookPath: widget.audiobook.path,
@@ -250,7 +260,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
       );
       await _loadBookmarks();
-      setState(() => _showChapters = true);
+      if (mounted) {
+        setState(() {
+          _resolvedAudiobook = resolvedBook;
+          _showChapters = true;
+        });
+      }
     }
   }
 
@@ -283,10 +298,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Widget build(BuildContext context) {
     return BlocBuilder<HomeCubit, HomeState>(
       builder: (context, state) {
-        final currentBook = state.audiobooks.firstWhere(
+        final stateBook = state.audiobooks.firstWhere(
           (b) => b.path == widget.audiobook.path,
-          orElse: () => widget.audiobook,
+          orElse: () => _resolvedAudiobook ?? widget.audiobook,
         );
+        final currentBook = (stateBook.chapters.isEmpty &&
+                (_resolvedAudiobook?.chapters.isNotEmpty ?? false))
+            ? _resolvedAudiobook!
+            : stateBook;
 
         return Scaffold(
           backgroundColor: const Color(0xFF1A1A1A),
@@ -319,7 +338,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ),
               IconButton(
                 icon: const Icon(Icons.bookmark_add_outlined),
-                onPressed: _addBookmark,
+                onPressed: () => _addBookmark(currentBook),
                 tooltip: 'Add bookmark',
               ),
               ValueListenableBuilder<Duration?>(
@@ -512,7 +531,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       const SizedBox(height: 32),
                       _buildProgress(currentBook),
                       const SizedBox(height: 24),
-                      _buildControls(),
+                      _buildControls(currentBook),
                       if (_showChapters) ...[
                         const SizedBox(height: 32),
                         _buildListSection(currentBook),
@@ -677,7 +696,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _buildControls() {
+  Widget _buildControls(Audiobook audiobook) {
     return StreamBuilder<PlayerState>(
       stream: _playerService.playerStateStream,
       builder: (context, snapshot) {
@@ -695,9 +714,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
               icon: const Icon(Icons.skip_previous, size: 28),
               color: Colors.white70,
               onPressed: () {
-                final currentIndex = _playerService.getCurrentChapterIndex(widget.audiobook) ?? 0;
+                final currentIndex = _playerService.getCurrentChapterIndex(audiobook) ?? 0;
                 if (currentIndex > 0) {
-                  _playerService.seekToChapter(widget.audiobook, currentIndex - 1);
+                  _playerService.seekToChapter(audiobook, currentIndex - 1);
                 } else {
                   _playerService.seekToPosition(Duration.zero);
                 }
@@ -779,9 +798,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
               icon: const Icon(Icons.skip_next, size: 28),
               color: Colors.white70,
               onPressed: () {
-                final currentIndex = _playerService.getCurrentChapterIndex(widget.audiobook) ?? 0;
-                if (currentIndex < widget.audiobook.chapters.length - 1) {
-                  _playerService.seekToChapter(widget.audiobook, currentIndex + 1);
+                final currentIndex = _playerService.getCurrentChapterIndex(audiobook) ?? 0;
+                if (currentIndex < audiobook.chapters.length - 1) {
+                  _playerService.seekToChapter(audiobook, currentIndex + 1);
                 }
               },
               tooltip: 'Next chapter',
@@ -818,7 +837,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 child: TabBarView(
                   children: [
                     _buildChaptersTab(audiobook),
-                    _buildBookmarksTab(),
+                    _buildBookmarksTab(audiobook),
                   ],
                 ),
               ),
@@ -829,7 +848,58 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _buildBookmarksTab() {
+  String _formatBookmarkDuration(Duration d, {required bool padHours}) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60);
+    if (padHours || h > 0) {
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    }
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  String _formatChapterDisplayTitle(Chapter chapter) {
+    var displayTitle = chapter.displayTitle;
+    if (chapter.part != null) {
+      final prefix = '${chapter.part} - ';
+      if (displayTitle.startsWith(prefix)) {
+        displayTitle = displayTitle.substring(prefix.length);
+      }
+    }
+    return displayTitle;
+  }
+
+  String _formatBookmarkSubtitle(Bookmark b, Audiobook audiobook) {
+    final totalBookSeconds =
+        audiobook.chapters.fold<double>(0.0, (sum, c) => sum + c.duration);
+    final totalBookMs = (totalBookSeconds * 1000).round();
+    final padHours = totalBookMs >= 3600000;
+    final posStr = _formatBookmarkDuration(
+      Duration(milliseconds: b.positionMs),
+      padHours: padHours,
+    );
+
+    final buffer = StringBuffer(posStr);
+    if (totalBookMs > 0) {
+      final totalStr = _formatBookmarkDuration(
+        Duration(milliseconds: totalBookMs),
+        padHours: padHours,
+      );
+      final pct = (b.positionMs / totalBookMs * 100).round().clamp(0, 100);
+      buffer.write(' / $totalStr ($pct%)');
+    }
+
+    final chapter = _playerService.resolveChapterForGlobalPosition(
+      audiobook,
+      b.positionMs,
+    );
+    if (chapter != null) {
+      buffer.write(' • ${_formatChapterDisplayTitle(chapter)}');
+    }
+    return buffer.toString();
+  }
+
+  Widget _buildBookmarksTab(Audiobook audiobook) {
     if (_bookmarks.isEmpty) {
       return Center(
         child: Text(
@@ -842,13 +912,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
       itemCount: _bookmarks.length,
       itemBuilder: (context, index) {
         final b = _bookmarks[index];
+        final title = (b.label != null && b.label!.isNotEmpty)
+            ? b.label!
+            : 'Bookmark ${index + 1}';
         return ListTile(
           title: Text(
-            b.label ?? 'Bookmark ${index + 1}',
+            title,
             style: const TextStyle(color: Colors.white, fontSize: 14),
           ),
           subtitle: Text(
-            b.positionFormatted,
+            _formatBookmarkSubtitle(b, audiobook),
             style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
           ),
           trailing: IconButton(
@@ -861,7 +934,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
             },
           ),
           onTap: () {
-            _playerService.seekToPosition(Duration(milliseconds: b.positionMs));
+            unawaited(
+              _playerService.seekToBookPosition(
+                audiobook,
+                Duration(milliseconds: b.positionMs),
+              ),
+            );
           },
         );
       },
