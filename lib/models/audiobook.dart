@@ -211,6 +211,50 @@ class Audiobook {
     return 0;
   }
 
+  /// Canonical total `1.0x` duration in milliseconds across chapters and metadata.
+  int get totalDurationMs {
+    final sumMs = (chapters.fold<double>(0.0, (sum, c) => sum + c.duration) *
+            1000)
+        .round();
+    var maxEndMs = 0;
+    for (final c in chapters) {
+      final endMs = (c.end * 1000).round();
+      if (endMs > maxEndMs) maxEndMs = endMs;
+    }
+    final chaptersSpanMs = maxEndMs > sumMs ? maxEndMs : sumMs;
+    final formattedMs = durationInSeconds * 1000;
+    return chaptersSpanMs > formattedMs ? chaptersSpanMs : formattedMs;
+  }
+
+  /// True when chapters correspond 1-to-1 with physical audio files starting at `0:00`.
+  bool get hasOneToOneFileChapters =>
+      files.length > 1 &&
+      chapters.length == files.length &&
+      chapters.every((c) => c.duration > 0) &&
+      chapters.first.start <= 0.01;
+
+  /// Resolves the logical [Chapter] containing [globalPositionMs] (`start <= t < end`,
+  /// clamping out-of-range timestamps to the first/final chapter).
+  Chapter? chapterAtGlobalMs(int globalPositionMs) {
+    if (chapters.isEmpty) return null;
+    final globalSeconds = globalPositionMs / 1000.0;
+    var cumulativeStart = 0.0;
+    for (final chapter in chapters) {
+      final hasExplicitRange = chapter.end > chapter.start;
+      final start = hasExplicitRange ? chapter.start : cumulativeStart;
+      final end =
+          hasExplicitRange ? chapter.end : cumulativeStart + chapter.duration;
+      cumulativeStart = end;
+      if (globalSeconds >= start && globalSeconds < end) {
+        return chapter;
+      }
+    }
+    if (globalSeconds < chapters.first.start) {
+      return chapters.first;
+    }
+    return chapters.last;
+  }
+
   double get progressPercentage => isRead ? 1.0 : 0.0;
 }
 
@@ -226,6 +270,17 @@ class Chapter {
   final String title;
   final String displayTitle;
   final String? part;
+
+  /// Display title with any redundant `'<part> - '` prefix stripped.
+  String get strippedDisplayTitle {
+    if (part != null) {
+      final prefix = '$part - ';
+      if (displayTitle.startsWith(prefix)) {
+        return displayTitle.substring(prefix.length);
+      }
+    }
+    return displayTitle;
+  }
 
   const Chapter({
     required this.index,

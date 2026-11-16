@@ -234,10 +234,26 @@ void main() {
         await tester.tap(find.text('Save'));
         await tester.pumpAndSettle();
 
-        final savedBookmarks = await storage.getBookmarksForBook(book.path);
-        expect(savedBookmarks.length, equals(1));
-        expect(savedBookmarks.first.label, equals('Kelsier arrives'));
-        expect(savedBookmarks.first.positionMs, equals(125000));
+        // Remount PlayerScreen against the same SQLite FFI storage to verify persistence via UI seam
+        await tester.pumpWidget(
+          MaterialApp(
+            key: const ValueKey('remounted_player'),
+            home: BlocProvider<HomeCubit>.value(
+              value: homeCubit,
+              child: PlayerScreen(
+                audiobook: book,
+                playerService: playerService,
+                storage: storage,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.byTooltip('Show list'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Show list'));
+        await tester.pumpAndSettle();
 
         await tester.ensureVisible(find.text('Bookmarks'));
         await tester.pumpAndSettle();
@@ -392,7 +408,9 @@ void main() {
         playerService = AudioPlayerService(
           engine: engine,
           storage: storage,
-          fileDurationProbe: (path) async => engine.trackDurationsByPath[path],
+          // 1-to-1 multi-file chapters derive per-file durations directly from chapters without probing disk
+          fileDurationProbe: (_) =>
+              Future<Duration?>.error(StateError('unexpected disk probe')),
           enablePeriodicSave: false,
         );
         homeCubit = HomeCubit(
@@ -954,7 +972,7 @@ void main() {
           ],
         );
 
-        final probeCalls = <String, int>{};
+        var allowDiskProbe = true;
         storage = LibraryStorage(databasePath: inMemoryDatabasePath);
         engine = FakeAudioEngine(
           trackDurationsByPath: {
@@ -965,10 +983,8 @@ void main() {
         playerService = AudioPlayerService(
           engine: engine,
           storage: storage,
-          fileDurationProbe: (path) async {
-            probeCalls[path] = (probeCalls[path] ?? 0) + 1;
-            return engine.trackDurationsByPath[path];
-          },
+          fileDurationProbe: (path) async =>
+              allowDiskProbe ? engine.trackDurationsByPath[path] : null,
           enablePeriodicSave: false,
         );
         homeCubit = HomeCubit(
@@ -1044,7 +1060,8 @@ void main() {
           findsOneWidget,
         );
 
-        // Return to physical file 0 @ 01:00, then tap 'Bridge Four salute' -> file 1 @ 05:00
+        // Disable further probing; cached per-file durations still resolve cross-file seek accurately
+        allowDiskProbe = false;
         await engine.seek(const Duration(minutes: 1), index: 0);
         await tester.pump();
 
@@ -1055,17 +1072,12 @@ void main() {
 
         expect(engine.currentIndex, equals(1));
         expect(engine.position, equals(const Duration(minutes: 5)));
-
-        // Per-file durations were cached across creation + seeking (1 probe per file)
-        expect(probeCalls[book.files[0]], equals(1));
-        expect(probeCalls[book.files[1]], equals(1));
       },
     );
 
     testWidgets(
-      'handles 0-duration metadata and empty chapters cleanly in subtitles, and clamps 0 / negative / out-of-range bookmark seeks safely',
+      'omits total duration and chapter suffix cleanly on 0-duration empty-chapter books without throwing on tap',
       (tester) async {
-        // Part A: 0 total duration + empty chapters (unreadable empty-chapter book)
         final emptyBookPath =
             '/books/empty_meta_${DateTime.now().microsecondsSinceEpoch}';
         final emptyBook = Audiobook(
@@ -1145,12 +1157,14 @@ void main() {
           findsOneWidget,
         );
 
-        // Tapping bookmark on empty-files book does not throw
         await tester.tap(mysteryTile);
         await tester.pumpAndSettle();
+      },
+    );
 
-        // Part B: 2-file book (20m + 25m = 45m) with 0-duration corrupt chapter metadata
-        // + boundary bookmarks at -5000ms, 0ms, and 9,999,999ms (exceeding total duration)
+    testWidgets(
+      'clamps negative, zero, and out-of-range bookmark seeks safely within physical file bounds',
+      (tester) async {
         final clampBookPath =
             '/books/clamp_book_${DateTime.now().microsecondsSinceEpoch}';
         final clampBook = Audiobook(
@@ -1179,6 +1193,7 @@ void main() {
           ],
         );
 
+        storage = LibraryStorage(databasePath: inMemoryDatabasePath);
         await storage.addBookmark(
           Bookmark(
             bookPath: clampBook.path,
@@ -1201,9 +1216,6 @@ void main() {
           ),
         );
 
-        await homeCubit.close();
-        playerService.dispose();
-
         engine = FakeAudioEngine(
           trackDurationsByPath: {
             clampBook.files[0]: const Duration(minutes: 20),
@@ -1216,7 +1228,6 @@ void main() {
           fileDurationProbe: (path) async => engine.trackDurationsByPath[path],
           enablePeriodicSave: false,
         );
-        // Probe returns 0-duration so chapters stay 0-duration (testing 0-total + chapter title fallback)
         homeCubit = HomeCubit(
           storage: storage,
           scanner: AudiobookScanner(),
@@ -1234,7 +1245,6 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
-            key: const ValueKey('clamp_app'),
             home: BlocProvider<HomeCubit>.value(
               value: homeCubit,
               child: PlayerScreen(
@@ -1297,6 +1307,241 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(negTile);
         await tester.pumpAndSettle();
+        expect(engine.currentIndex, equals(0));
+        expect(engine.position, equals(Duration.zero));
+      },
+    );
+
+    testWidgets(
+      'preserves 1s resume rewind on subsequent pause->play after seeking a Bookmark while playing, lands on file 0 when all multi-file durations are 0, and uses full book end when first AI chapter starts after 0:00',
+      (tester) async {
+        // 1. AI-detected single-file book where Chapter 1 starts at 02:00 (120s) and ends at 01:00:00 (3600s)
+        // Sum of chapter durations is 58:00, but actual book end is 01:00:00 (>= 1h -> HH:MM:SS).
+        final aiIntroPath =
+            '/books/ai_intro_${DateTime.now().microsecondsSinceEpoch}';
+        final aiIntroBook = Audiobook(
+          path: aiIntroPath,
+          title: 'Oathbringer',
+          author: 'Brandon Sanderson',
+          hasMetadataLocally: true,
+          files: ['$aiIntroPath/oathbringer.m4b'],
+          durationFormatted: '01:00:00',
+          totalChapters: 1,
+          chapters: const [
+            Chapter(
+              index: 0,
+              start: 120,
+              end: 3600,
+              duration: 3480,
+              startFormatted: '00:02:00',
+              endFormatted: '01:00:00',
+              durationFormatted: '00:58:00',
+              title: 'Chapter 1',
+              displayTitle: 'Chapter 1',
+            ),
+          ],
+        );
+
+        storage = LibraryStorage(databasePath: inMemoryDatabasePath);
+        await storage.addBookmark(
+          Bookmark(
+            bookPath: aiIntroBook.path,
+            positionMs: 300000, // 00:05:00
+            label: 'Intro Done',
+          ),
+        );
+
+        engine = FakeAudioEngine(
+          trackDurationsByPath: {
+            aiIntroBook.files[0]: const Duration(hours: 1),
+          },
+        );
+        playerService = AudioPlayerService(
+          engine: engine,
+          storage: storage,
+          fileDurationProbe: (path) async => engine.trackDurationsByPath[path],
+          enablePeriodicSave: false,
+        );
+        homeCubit = HomeCubit(
+          storage: storage,
+          scanner: AudiobookScanner(),
+          startBackgroundFetchers: false,
+          initialState: HomeState(audiobooks: [aiIntroBook]),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: BlocProvider<HomeCubit>.value(
+              value: homeCubit,
+              child: PlayerScreen(
+                audiobook: aiIntroBook,
+                playerService: playerService,
+                storage: storage,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Start playing, open Bookmarks, tap 'Intro Done' while PLAYING
+        await tester.ensureVisible(find.byIcon(Icons.play_circle_filled));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(Icons.play_circle_filled));
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.byTooltip('Show list'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Show list'));
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.text('Bookmarks'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Bookmarks'));
+        await tester.pumpAndSettle();
+
+        final introTile = find.widgetWithText(ListTile, 'Intro Done');
+        // Total book duration must be 01:00:00 (from chapters.last.end), NOT 58:00
+        expect(
+          find.descendant(
+            of: introTile,
+            matching: find.text('00:05:00 / 01:00:00 (8%) • Chapter 1'),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.ensureVisible(introTile);
+        await tester.pumpAndSettle();
+        await tester.tap(introTile);
+        await tester.pumpAndSettle();
+        expect(playerService.playing, isTrue);
+        expect(engine.position, equals(const Duration(minutes: 5)));
+
+        // Advance to 06:00, pause, and press Play -> MUST apply 1s resume rewind to 05:59 (ADR 0002)
+        engine.emitPosition(const Duration(minutes: 6));
+        await tester.pump();
+
+        await tester.ensureVisible(find.byIcon(Icons.pause_circle_filled));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(Icons.pause_circle_filled));
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.byIcon(Icons.play_circle_filled));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(Icons.play_circle_filled));
+        await tester.pumpAndSettle();
+        expect(
+          engine.position,
+          equals(const Duration(minutes: 5, seconds: 59)),
+        );
+      },
+    );
+
+    testWidgets(
+      'lands on file 0 (not the last file) when seeking a 0 ms Bookmark on a multi-file Audiobook whose durations are all 0',
+      (tester) async {
+        final zeroMultiPath =
+            '/books/zero_multi_${DateTime.now().microsecondsSinceEpoch}';
+        final zeroMultiBook = Audiobook(
+          path: zeroMultiPath,
+          title: 'Unknown Tapes',
+          author: 'Unknown',
+          hasMetadataLocally: true,
+          files: [
+            '$zeroMultiPath/tape1.mp3',
+            '$zeroMultiPath/tape2.mp3',
+          ],
+          durationFormatted: '00:00:00',
+          totalChapters: 2,
+          chapters: const [
+            Chapter(
+              index: 0,
+              start: 0,
+              end: 0,
+              duration: 0,
+              startFormatted: '00:00:00',
+              endFormatted: '00:00:00',
+              durationFormatted: '00:00:00',
+              title: 'Tape 1',
+              displayTitle: 'Tape 1',
+            ),
+            Chapter(
+              index: 1,
+              start: 0,
+              end: 0,
+              duration: 0,
+              startFormatted: '00:00:00',
+              endFormatted: '00:00:00',
+              durationFormatted: '00:00:00',
+              title: 'Tape 2',
+              displayTitle: 'Tape 2',
+            ),
+          ],
+        );
+
+        storage = LibraryStorage(databasePath: inMemoryDatabasePath);
+        await storage.addBookmark(
+          Bookmark(
+            bookPath: zeroMultiBook.path,
+            positionMs: 0,
+            label: 'Start of Tape 1',
+          ),
+        );
+
+        engine = FakeAudioEngine();
+        playerService = AudioPlayerService(
+          engine: engine,
+          storage: storage,
+          fileDurationProbe: (_) async => Duration.zero,
+          enablePeriodicSave: false,
+        );
+        homeCubit = HomeCubit(
+          storage: storage,
+          scanner: AudiobookScanner(),
+          startBackgroundFetchers: false,
+          initialState: HomeState(audiobooks: [zeroMultiBook]),
+          audioMetadataProbe: (_) async => const AudioFileMetadata(
+            duration: Duration.zero,
+            bitRate: 0,
+            sampleRate: 0,
+            channelCount: 0,
+            type: AudioType.mp3,
+            title: 'Tape',
+          ),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: BlocProvider<HomeCubit>.value(
+              value: homeCubit,
+              child: PlayerScreen(
+                audiobook: zeroMultiBook,
+                playerService: playerService,
+                storage: storage,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await engine.seek(Duration.zero, index: 1);
+        await tester.pump();
+
+        await tester.ensureVisible(find.byTooltip('Show list'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Show list'));
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.text('Bookmarks'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Bookmarks'));
+        await tester.pumpAndSettle();
+
+        final startTile = find.widgetWithText(ListTile, 'Start of Tape 1');
+        await tester.ensureVisible(startTile);
+        await tester.pumpAndSettle();
+        await tester.tap(startTile);
+        await tester.pumpAndSettle();
+
         expect(engine.currentIndex, equals(0));
         expect(engine.position, equals(Duration.zero));
       },

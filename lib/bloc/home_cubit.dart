@@ -582,7 +582,8 @@ class HomeCubit extends Cubit<HomeState> {
     }
   }
 
-  static Future<Map<String, Object>> _calculateChaptersWithProbe(
+  static Future<({String durationFormatted, List<Chapter> chapters})>
+      _calculateChaptersWithProbe(
     Audiobook book,
     Future<AudioFileMetadata?> Function(String filePath) probe,
   ) async {
@@ -624,10 +625,10 @@ class HomeCubit extends Cubit<HomeState> {
     }
 
     final durationStr = AudiobookScanner.formatDuration(cumulativeStart);
-    return <String, Object>{
-      'durationFormatted': durationStr,
-      'chapters': calculatedChapters,
-    };
+    return (
+      durationFormatted: durationStr,
+      chapters: calculatedChapters,
+    );
   }
 
   Future<Audiobook> ensureChaptersCalculated(Audiobook book) async {
@@ -649,8 +650,8 @@ class HomeCubit extends Cubit<HomeState> {
             ),
           );
 
-    final durationStr = result['durationFormatted'] as String;
-    final calculatedChapters = result['chapters'] as List<Chapter>;
+    final durationStr = result.durationFormatted;
+    final calculatedChapters = result.chapters;
     debugPrint('ensureChaptersCalculated: finished, updating state and database');
 
     final updatedBook = book.copyWith(

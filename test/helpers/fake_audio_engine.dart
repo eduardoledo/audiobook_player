@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:audiobook_player/services/audio_engine.dart';
+import 'package:audiobook_player/features/player/domain/audio_engine.dart';
 import 'package:just_audio/just_audio.dart';
 
 class FakeAudioEngine extends AudioEngine {

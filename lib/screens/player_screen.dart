@@ -284,11 +284,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.dispose();
   }
 
-  String _formatDuration(Duration d) {
+  String _formatDuration(Duration d, {bool padHours = false}) {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60);
     final s = d.inSeconds.remainder(60);
-    if (h > 0) {
+    if (padHours || h > 0) {
       return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
     }
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
@@ -570,7 +570,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _buildProgress(Audiobook audiobook) {
-    final totalBookSeconds = audiobook.chapters.fold<double>(0.0, (sum, c) => sum + c.duration);
+    final bookTotalMs = audiobook.totalDurationMs;
 
     return StreamBuilder<Duration>(
       stream: _playerService.positionStream,
@@ -592,7 +592,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
             }
             
             final bookPosMs = (previousChaptersSeconds * 1000).round() + chapterPosMs;
-            final bookTotalMs = (totalBookSeconds * 1000).round();
             final bookProgress = bookTotalMs > 0 ? bookPosMs / bookTotalMs : 0.0;
 
             return Column(
@@ -629,12 +628,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         currentIndex < audiobook.chapters.length
                             ? () {
                                 final chapter = audiobook.chapters[currentIndex];
-                                String title = chapter.displayTitle;
+                                final title = chapter.strippedDisplayTitle;
                                 if (chapter.part != null) {
-                                  final prefix = '${chapter.part} - ';
-                                  if (title.startsWith(prefix)) {
-                                    title = title.substring(prefix.length);
-                                  }
                                   return '${chapter.part} • $title';
                                 }
                                 return title;
@@ -848,44 +843,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  String _formatBookmarkDuration(Duration d, {required bool padHours}) {
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60);
-    final s = d.inSeconds.remainder(60);
-    if (padHours || h > 0) {
-      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-    }
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-  }
-
-  String _formatChapterDisplayTitle(Chapter chapter) {
-    var displayTitle = chapter.displayTitle;
-    if (chapter.part != null) {
-      final prefix = '${chapter.part} - ';
-      if (displayTitle.startsWith(prefix)) {
-        displayTitle = displayTitle.substring(prefix.length);
-      }
-    }
-    return displayTitle;
-  }
-
   String _formatBookmarkSubtitle(Bookmark b, Audiobook audiobook) {
     final safePosMs = b.positionMs < 0 ? 0 : b.positionMs;
-    final totalBookSeconds =
-        audiobook.chapters.fold<double>(0.0, (sum, c) => sum + c.duration);
-    final chaptersTotalMs = (totalBookSeconds * 1000).round();
-    final totalBookMs = chaptersTotalMs > 0
-        ? chaptersTotalMs
-        : audiobook.durationInSeconds * 1000;
+    final totalBookMs = audiobook.totalDurationMs;
     final padHours = totalBookMs >= 3600000;
-    final posStr = _formatBookmarkDuration(
+    final posStr = _formatDuration(
       Duration(milliseconds: safePosMs),
       padHours: padHours,
     );
 
     final buffer = StringBuffer(posStr);
     if (totalBookMs > 0) {
-      final totalStr = _formatBookmarkDuration(
+      final totalStr = _formatDuration(
         Duration(milliseconds: totalBookMs),
         padHours: padHours,
       );
@@ -893,12 +862,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       buffer.write(' / $totalStr ($pct%)');
     }
 
-    final chapter = _playerService.resolveChapterForGlobalPosition(
-      audiobook,
-      safePosMs,
-    );
+    final chapter = audiobook.chapterAtGlobalMs(safePosMs);
     if (chapter != null) {
-      buffer.write(' • ${_formatChapterDisplayTitle(chapter)}');
+      buffer.write(' • ${chapter.strippedDisplayTitle}');
     }
     return buffer.toString();
   }
@@ -992,14 +958,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             final chapter = item.chapter!;
             final globalIndex = item.chapterIndex!;
             final isCurrent = currentIndex == globalIndex;
-
-            String displayTitle = chapter.displayTitle;
-            if (chapter.part != null) {
-              final prefix = '${chapter.part} - ';
-              if (displayTitle.startsWith(prefix)) {
-                displayTitle = displayTitle.substring(prefix.length);
-              }
-            }
+            final displayTitle = chapter.strippedDisplayTitle;
 
             return ListTile(
               dense: true,

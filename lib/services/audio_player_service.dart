@@ -4,10 +4,11 @@ import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../features/player/data/just_audio_engine.dart';
+import '../features/player/domain/audio_engine.dart';
 import '../models/audiobook.dart';
 import '../models/audio_eq_profile.dart';
 import '../service_locator.dart';
-import 'audio_engine.dart';
 import 'audiobook_scanner.dart';
 import 'library_storage.dart';
 
@@ -275,23 +276,18 @@ class AudioPlayerService {
 
     final targetGlobalMs =
         globalPosition.inMilliseconds < 0 ? 0 : globalPosition.inMilliseconds;
-    _rewindOnNextPlay = false;
+    // Only suppress resume-rewind when seeking from a paused state; when already
+    // playing, a subsequent pause->play must still rewind 1s per ADR 0002.
+    _rewindOnNextPlay = _engine.playing;
 
     if (audiobook.files.length == 1) {
-      var totalMs = (audiobook.chapters.fold<double>(
-                0.0,
-                (sum, c) => sum + c.duration,
-              ) *
-              1000)
-          .round();
+      var totalMs = audiobook.totalDurationMs;
       if (totalMs <= 0) {
         final fileDurations = await _resolveFileDurationsMs(audiobook);
         if (fileDurations.isNotEmpty && fileDurations.first > 0) {
           totalMs = fileDurations.first;
         } else if ((_engine.duration?.inMilliseconds ?? 0) > 0) {
           totalMs = _engine.duration!.inMilliseconds;
-        } else if (audiobook.durationInSeconds > 0) {
-          totalMs = audiobook.durationInSeconds * 1000;
         }
       }
       final clampedMs =
@@ -300,7 +296,17 @@ class AudioPlayerService {
       return;
     }
 
+    if (targetGlobalMs == 0) {
+      await _engine.seek(Duration.zero, index: 0);
+      return;
+    }
+
     final fileDurationsMs = await _resolveFileDurationsMs(audiobook);
+    if (fileDurationsMs.every((d) => d <= 0)) {
+      await _engine.seek(Duration(milliseconds: targetGlobalMs), index: 0);
+      return;
+    }
+
     var remainingMs = targetGlobalMs;
     for (var i = 0; i < audiobook.files.length; i++) {
       final fileDurMs = i < fileDurationsMs.length ? fileDurationsMs[i] : 0;
@@ -332,7 +338,10 @@ class AudioPlayerService {
     await _engine.play();
   }
 
-  Future<void> pause() => _engine.pause();
+  Future<void> pause() {
+    _rewindOnNextPlay = true;
+    return _engine.pause();
+  }
   Future<void> stop() => _engine.stop();
 
   Future<void> setSpeed(double speed) => _engine.setSpeed(speed);
@@ -395,11 +404,19 @@ class AudioPlayerService {
 
   Future<List<int>> _resolveFileDurationsMs(Audiobook audiobook) async {
     if (audiobook.files.isEmpty) return const [];
-    final cacheKey = '${audiobook.path}|${audiobook.files.length}';
-    final cached = _fileDurationsCache[cacheKey];
-    if (cached != null) return cached;
+    if (audiobook.hasOneToOneFileChapters) {
+      return [
+        for (final chapter in audiobook.chapters)
+          (chapter.duration * 1000).round(),
+      ];
+    }
 
-    final hasOneToOneChapters =
+    final cached = _fileDurationsCache[audiobook.path];
+    if (cached != null && cached.length == audiobook.files.length) {
+      return cached;
+    }
+
+    final hasSameChapterCount =
         audiobook.chapters.length == audiobook.files.length;
     final resolved = <int>[];
     for (var i = 0; i < audiobook.files.length; i++) {
@@ -411,14 +428,16 @@ class AudioPlayerService {
       }
       if (probed != null && probed > Duration.zero) {
         resolved.add(probed.inMilliseconds);
-      } else if (hasOneToOneChapters && i < audiobook.chapters.length) {
+      } else if (hasSameChapterCount && i < audiobook.chapters.length) {
         resolved.add((audiobook.chapters[i].duration * 1000).round());
       } else {
         resolved.add(0);
       }
     }
 
-    _fileDurationsCache[cacheKey] = resolved;
+    if (resolved.any((d) => d > 0)) {
+      _fileDurationsCache[audiobook.path] = resolved;
+    }
     return resolved;
   }
 
@@ -456,25 +475,8 @@ class AudioPlayerService {
   Chapter? resolveChapterForGlobalPosition(
     Audiobook audiobook,
     int globalPositionMs,
-  ) {
-    if (audiobook.chapters.isEmpty) return null;
-    final globalSeconds = globalPositionMs / 1000.0;
-    var cumulativeStart = 0.0;
-    for (final chapter in audiobook.chapters) {
-      final hasExplicitRange = chapter.end > chapter.start;
-      final start = hasExplicitRange ? chapter.start : cumulativeStart;
-      final end =
-          hasExplicitRange ? chapter.end : cumulativeStart + chapter.duration;
-      cumulativeStart = end;
-      if (globalSeconds >= start && globalSeconds < end) {
-        return chapter;
-      }
-    }
-    if (globalSeconds < audiobook.chapters.first.start) {
-      return audiobook.chapters.first;
-    }
-    return audiobook.chapters.last;
-  }
+  ) =>
+      audiobook.chapterAtGlobalMs(globalPositionMs);
 
   AndroidEqualizer? get equalizer => _engine.equalizer;
 
