@@ -877,4 +877,429 @@ void main() {
       },
     );
   });
+
+  group('Ticket 03: AI-Detected Multi-File Chapters & Metadata Edge Cases', () {
+    late LibraryStorage storage;
+    late FakeAudioEngine engine;
+    late AudioPlayerService playerService;
+    late HomeCubit homeCubit;
+
+    tearDown(() async {
+      await homeCubit.close();
+      playerService.dispose();
+    });
+
+    testWidgets(
+      'maps global position_ms <-> (fileIndex, localOffset) via cached file durations and resolves AI-detected logical chapters (including exact end-of-book)',
+      (tester) async {
+        final bookPath =
+            '/books/wor_ai_chapters_${DateTime.now().microsecondsSinceEpoch}';
+        // 2 physical files (30m + 45m = 75m), 4 AI-detected logical chapters
+        final book = Audiobook(
+          path: bookPath,
+          title: 'Words of Radiance',
+          author: 'Brandon Sanderson',
+          hasMetadataLocally: true,
+          files: [
+            '$bookPath/part1.mp3', // 30:00 (1800s)
+            '$bookPath/part2.mp3', // 45:00 (2700s)
+          ],
+          durationFormatted: '01:15:00',
+          totalChapters: 4,
+          chapters: const [
+            Chapter(
+              index: 0,
+              start: 0,
+              end: 900,
+              duration: 900,
+              startFormatted: '00:00:00',
+              endFormatted: '00:15:00',
+              durationFormatted: '00:15:00',
+              title: 'Prologue: To Weep',
+              displayTitle: 'Prologue: To Weep',
+            ),
+            Chapter(
+              index: 1,
+              start: 900,
+              end: 2400,
+              duration: 1500,
+              startFormatted: '00:15:00',
+              endFormatted: '00:40:00',
+              durationFormatted: '00:25:00',
+              title: 'Chapter 1: Winds and Oaths',
+              displayTitle: 'Chapter 1: Winds and Oaths',
+            ),
+            Chapter(
+              index: 2,
+              start: 2400,
+              end: 3600,
+              duration: 1200,
+              startFormatted: '00:40:00',
+              endFormatted: '01:00:00',
+              durationFormatted: '00:20:00',
+              title: 'Chapter 2: Honor Is Dead',
+              displayTitle: 'Chapter 2: Honor Is Dead',
+            ),
+            Chapter(
+              index: 3,
+              start: 3600,
+              end: 4500,
+              duration: 900,
+              startFormatted: '01:00:00',
+              endFormatted: '01:15:00',
+              durationFormatted: '00:15:00',
+              title: 'Epilogue: Wit',
+              displayTitle: 'Epilogue: Wit',
+            ),
+          ],
+        );
+
+        final probeCalls = <String, int>{};
+        storage = LibraryStorage(databasePath: inMemoryDatabasePath);
+        engine = FakeAudioEngine(
+          trackDurationsByPath: {
+            book.files[0]: const Duration(minutes: 30),
+            book.files[1]: const Duration(minutes: 45),
+          },
+        );
+        playerService = AudioPlayerService(
+          engine: engine,
+          storage: storage,
+          fileDurationProbe: (path) async {
+            probeCalls[path] = (probeCalls[path] ?? 0) + 1;
+            return engine.trackDurationsByPath[path];
+          },
+          enablePeriodicSave: false,
+        );
+        homeCubit = HomeCubit(
+          storage: storage,
+          scanner: AudiobookScanner(),
+          startBackgroundFetchers: false,
+          initialState: HomeState(audiobooks: [book]),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: BlocProvider<HomeCubit>.value(
+              value: homeCubit,
+              child: PlayerScreen(
+                audiobook: book,
+                playerService: playerService,
+                storage: storage,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Physical file 1 (starts at 30:00) + local 05:00 = global 00:35:00 (2,100,000 ms)
+        // Falls inside AI Chapter 1 [00:15:00..00:40:00)
+        await engine.seek(const Duration(minutes: 5), index: 1);
+        await tester.pump();
+
+        await tester.ensureVisible(find.byTooltip('Add bookmark'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Add bookmark'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), 'Bridge Four salute');
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+
+        // Physical file 1 + local 45:00 = exact book endpoint 01:15:00 (4,500,000 ms)
+        // Clamps to final chapter 'Epilogue: Wit'
+        await engine.seek(const Duration(minutes: 45), index: 1);
+        await tester.pump();
+
+        await tester.ensureVisible(find.byTooltip('Add bookmark'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Add bookmark'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), 'Final line');
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.text('Bookmarks'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Bookmarks'));
+        await tester.pumpAndSettle();
+
+        final bridgeTile = find.widgetWithText(ListTile, 'Bridge Four salute');
+        final finalTile = find.widgetWithText(ListTile, 'Final line');
+        expect(bridgeTile, findsOneWidget);
+        expect(finalTile, findsOneWidget);
+        expect(
+          find.descendant(
+            of: bridgeTile,
+            matching: find.text(
+              '00:35:00 / 01:15:00 (47%) • Chapter 1: Winds and Oaths',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: finalTile,
+            matching: find.text('01:15:00 / 01:15:00 (100%) • Epilogue: Wit'),
+          ),
+          findsOneWidget,
+        );
+
+        // Return to physical file 0 @ 01:00, then tap 'Bridge Four salute' -> file 1 @ 05:00
+        await engine.seek(const Duration(minutes: 1), index: 0);
+        await tester.pump();
+
+        await tester.ensureVisible(bridgeTile);
+        await tester.pumpAndSettle();
+        await tester.tap(bridgeTile);
+        await tester.pumpAndSettle();
+
+        expect(engine.currentIndex, equals(1));
+        expect(engine.position, equals(const Duration(minutes: 5)));
+
+        // Per-file durations were cached across creation + seeking (1 probe per file)
+        expect(probeCalls[book.files[0]], equals(1));
+        expect(probeCalls[book.files[1]], equals(1));
+      },
+    );
+
+    testWidgets(
+      'handles 0-duration metadata and empty chapters cleanly in subtitles, and clamps 0 / negative / out-of-range bookmark seeks safely',
+      (tester) async {
+        // Part A: 0 total duration + empty chapters (unreadable empty-chapter book)
+        final emptyBookPath =
+            '/books/empty_meta_${DateTime.now().microsecondsSinceEpoch}';
+        final emptyBook = Audiobook(
+          path: emptyBookPath,
+          title: 'Unreadable Archive',
+          author: 'Unknown',
+          hasMetadataLocally: true,
+          files: const [],
+          durationFormatted: '00:00:00',
+          totalChapters: 0,
+          chapters: const [],
+        );
+
+        storage = LibraryStorage(databasePath: inMemoryDatabasePath);
+        await storage.addBookmark(
+          Bookmark(
+            bookPath: emptyBook.path,
+            positionMs: 0,
+            label: 'Origin',
+          ),
+        );
+        await storage.addBookmark(
+          Bookmark(
+            bookPath: emptyBook.path,
+            positionMs: 195000, // 03:15
+            label: 'Mystery spot',
+          ),
+        );
+
+        engine = FakeAudioEngine();
+        playerService = AudioPlayerService(
+          engine: engine,
+          storage: storage,
+          fileDurationProbe: (_) async => null,
+          enablePeriodicSave: false,
+        );
+        homeCubit = HomeCubit(
+          storage: storage,
+          scanner: AudiobookScanner(),
+          startBackgroundFetchers: false,
+          initialState: HomeState(audiobooks: [emptyBook]),
+          audioMetadataProbe: (_) async => null,
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: BlocProvider<HomeCubit>.value(
+              value: homeCubit,
+              child: PlayerScreen(
+                audiobook: emptyBook,
+                playerService: playerService,
+                storage: storage,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.byTooltip('Show list'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Show list'));
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.text('Bookmarks'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Bookmarks'));
+        await tester.pumpAndSettle();
+
+        final originTile = find.widgetWithText(ListTile, 'Origin');
+        final mysteryTile = find.widgetWithText(ListTile, 'Mystery spot');
+        expect(
+          find.descendant(of: originTile, matching: find.text('00:00')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: mysteryTile, matching: find.text('03:15')),
+          findsOneWidget,
+        );
+
+        // Tapping bookmark on empty-files book does not throw
+        await tester.tap(mysteryTile);
+        await tester.pumpAndSettle();
+
+        // Part B: 2-file book (20m + 25m = 45m) with 0-duration corrupt chapter metadata
+        // + boundary bookmarks at -5000ms, 0ms, and 9,999,999ms (exceeding total duration)
+        final clampBookPath =
+            '/books/clamp_book_${DateTime.now().microsecondsSinceEpoch}';
+        final clampBook = Audiobook(
+          path: clampBookPath,
+          title: 'Shadows for Silence',
+          author: 'Brandon Sanderson',
+          hasMetadataLocally: true,
+          files: [
+            '$clampBookPath/01.mp3', // 20:00
+            '$clampBookPath/02.mp3', // 25:00
+          ],
+          durationFormatted: '00:00:00',
+          totalChapters: 1,
+          chapters: const [
+            Chapter(
+              index: 0,
+              start: 0,
+              end: 0,
+              duration: 0,
+              startFormatted: '00:00:00',
+              endFormatted: '00:00:00',
+              durationFormatted: '00:00:00',
+              title: 'Corrupt Header',
+              displayTitle: 'Corrupt Header',
+            ),
+          ],
+        );
+
+        await storage.addBookmark(
+          Bookmark(
+            bookPath: clampBook.path,
+            positionMs: -5000,
+            label: 'Negative legacy',
+          ),
+        );
+        await storage.addBookmark(
+          Bookmark(
+            bookPath: clampBook.path,
+            positionMs: 0,
+            label: 'Zero start',
+          ),
+        );
+        await storage.addBookmark(
+          Bookmark(
+            bookPath: clampBook.path,
+            positionMs: 9999999, // Exceeds 45:00 (2,700,000 ms)
+            label: 'Past the end',
+          ),
+        );
+
+        await homeCubit.close();
+        playerService.dispose();
+
+        engine = FakeAudioEngine(
+          trackDurationsByPath: {
+            clampBook.files[0]: const Duration(minutes: 20),
+            clampBook.files[1]: const Duration(minutes: 25),
+          },
+        );
+        playerService = AudioPlayerService(
+          engine: engine,
+          storage: storage,
+          fileDurationProbe: (path) async => engine.trackDurationsByPath[path],
+          enablePeriodicSave: false,
+        );
+        // Probe returns 0-duration so chapters stay 0-duration (testing 0-total + chapter title fallback)
+        homeCubit = HomeCubit(
+          storage: storage,
+          scanner: AudiobookScanner(),
+          startBackgroundFetchers: false,
+          initialState: HomeState(audiobooks: [clampBook]),
+          audioMetadataProbe: (_) async => const AudioFileMetadata(
+            duration: Duration.zero,
+            bitRate: 0,
+            sampleRate: 0,
+            channelCount: 0,
+            type: AudioType.mp3,
+            title: 'Corrupt Header',
+          ),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            key: const ValueKey('clamp_app'),
+            home: BlocProvider<HomeCubit>.value(
+              value: homeCubit,
+              child: PlayerScreen(
+                audiobook: clampBook,
+                playerService: playerService,
+                storage: storage,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.byTooltip('Show list'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Show list'));
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.text('Bookmarks'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Bookmarks'));
+        await tester.pumpAndSettle();
+
+        final negTile = find.widgetWithText(ListTile, 'Negative legacy');
+        final zeroTile = find.widgetWithText(ListTile, 'Zero start');
+        final pastEndTile = find.widgetWithText(ListTile, 'Past the end');
+
+        // 0-total omits '/ 00:00 (0%)' and negative position clamps cleanly to 00:00
+        expect(
+          find.descendant(
+            of: negTile,
+            matching: find.text('00:00 • Corrupt Header'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: zeroTile,
+            matching: find.text('00:00 • Corrupt Header'),
+          ),
+          findsOneWidget,
+        );
+
+        // Seeking to 9,999,999 ms clamps safely to final file (index 1) at its 25:00 end
+        await tester.ensureVisible(pastEndTile);
+        await tester.pumpAndSettle();
+        await tester.tap(pastEndTile);
+        await tester.pumpAndSettle();
+        expect(engine.currentIndex, equals(1));
+        expect(engine.position, equals(const Duration(minutes: 25)));
+
+        // Seeking to 0 ms and -5000 ms clamps safely to first file (index 0) at 00:00
+        await tester.ensureVisible(zeroTile);
+        await tester.pumpAndSettle();
+        await tester.tap(zeroTile);
+        await tester.pumpAndSettle();
+        expect(engine.currentIndex, equals(0));
+        expect(engine.position, equals(Duration.zero));
+
+        await tester.ensureVisible(negTile);
+        await tester.pumpAndSettle();
+        await tester.tap(negTile);
+        await tester.pumpAndSettle();
+        expect(engine.currentIndex, equals(0));
+        expect(engine.position, equals(Duration.zero));
+      },
+    );
+  });
 }

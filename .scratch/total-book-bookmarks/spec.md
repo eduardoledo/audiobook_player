@@ -1,6 +1,6 @@
 # Spec: Total-Book-Aware Bookmarks
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 

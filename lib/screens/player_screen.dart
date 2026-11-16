@@ -213,7 +213,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _addBookmark(Audiobook currentBook) async {
     final cubit = context.read<HomeCubit>();
-    final trackIndex = _playerService.getCurrentChapterIndex(currentBook) ?? 0;
+    final trackIndex = _playerService.currentTrackIndex ?? 0;
     final localPosition = _playerService.position;
     final controller = TextEditingController();
     final label = await showDialog<String>(
@@ -247,7 +247,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     
     if (label != null) {
       final resolvedBook = await cubit.ensureChaptersCalculated(currentBook);
-      final posMs = _playerService.getGlobalPositionMs(
+      final posMs = await _playerService.resolveGlobalPositionMs(
         resolvedBook,
         trackIndex: trackIndex,
         trackPosition: localPosition,
@@ -870,12 +870,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   String _formatBookmarkSubtitle(Bookmark b, Audiobook audiobook) {
+    final safePosMs = b.positionMs < 0 ? 0 : b.positionMs;
     final totalBookSeconds =
         audiobook.chapters.fold<double>(0.0, (sum, c) => sum + c.duration);
-    final totalBookMs = (totalBookSeconds * 1000).round();
+    final chaptersTotalMs = (totalBookSeconds * 1000).round();
+    final totalBookMs = chaptersTotalMs > 0
+        ? chaptersTotalMs
+        : audiobook.durationInSeconds * 1000;
     final padHours = totalBookMs >= 3600000;
     final posStr = _formatBookmarkDuration(
-      Duration(milliseconds: b.positionMs),
+      Duration(milliseconds: safePosMs),
       padHours: padHours,
     );
 
@@ -885,13 +889,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
         Duration(milliseconds: totalBookMs),
         padHours: padHours,
       );
-      final pct = (b.positionMs / totalBookMs * 100).round().clamp(0, 100);
+      final pct = (safePosMs / totalBookMs * 100).round().clamp(0, 100);
       buffer.write(' / $totalStr ($pct%)');
     }
 
     final chapter = _playerService.resolveChapterForGlobalPosition(
       audiobook,
-      b.positionMs,
+      safePosMs,
     );
     if (chapter != null) {
       buffer.write(' • ${_formatChapterDisplayTitle(chapter)}');

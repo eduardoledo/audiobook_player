@@ -16,6 +16,7 @@ class AudioPlayerService {
   final AudioEngine _engine;
   final LibraryStorage? _storageOverride;
   final Future<Duration?> Function(String filePath) fileDurationProbe;
+  final Map<String, List<int>> _fileDurationsCache = {};
   Audiobook? currentAudiobook;
   Timer? _progressTimer;
   StreamSubscription<PlayerState>? _playerStateSub;
@@ -43,8 +44,14 @@ class AudioPlayerService {
   }
 
   static Future<Duration?> _defaultFileDurationProbe(String filePath) async {
-    final meta = await AudiobookScanner.getAudioMetadata(File(filePath));
-    return meta?.duration;
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) return null;
+      final meta = await AudiobookScanner.getAudioMetadata(file);
+      return meta?.duration;
+    } catch (_) {
+      return null;
+    }
   }
 
   LibraryStorage get _storage => _storageOverride ?? getIt<LibraryStorage>();
@@ -264,28 +271,39 @@ class AudioPlayerService {
     Audiobook audiobook,
     Duration globalPosition,
   ) async {
+    if (audiobook.files.isEmpty) return;
+
     final targetGlobalMs =
         globalPosition.inMilliseconds < 0 ? 0 : globalPosition.inMilliseconds;
     _rewindOnNextPlay = false;
 
-    if (audiobook.files.length <= 1) {
-      final totalMs = (audiobook.chapters.fold<double>(
+    if (audiobook.files.length == 1) {
+      var totalMs = (audiobook.chapters.fold<double>(
                 0.0,
                 (sum, c) => sum + c.duration,
               ) *
               1000)
           .round();
+      if (totalMs <= 0) {
+        final fileDurations = await _resolveFileDurationsMs(audiobook);
+        if (fileDurations.isNotEmpty && fileDurations.first > 0) {
+          totalMs = fileDurations.first;
+        } else if ((_engine.duration?.inMilliseconds ?? 0) > 0) {
+          totalMs = _engine.duration!.inMilliseconds;
+        } else if (audiobook.durationInSeconds > 0) {
+          totalMs = audiobook.durationInSeconds * 1000;
+        }
+      }
       final clampedMs =
           totalMs > 0 ? targetGlobalMs.clamp(0, totalMs) : targetGlobalMs;
       await _engine.seek(Duration(milliseconds: clampedMs), index: 0);
       return;
     }
 
+    final fileDurationsMs = await _resolveFileDurationsMs(audiobook);
     var remainingMs = targetGlobalMs;
     for (var i = 0; i < audiobook.files.length; i++) {
-      final fileDurMs = i < audiobook.chapters.length
-          ? (audiobook.chapters[i].duration * 1000).round()
-          : 0;
+      final fileDurMs = i < fileDurationsMs.length ? fileDurationsMs[i] : 0;
       if ((fileDurMs > 0 && remainingMs < fileDurMs) ||
           i == audiobook.files.length - 1) {
         final localMs = fileDurMs > 0
@@ -373,6 +391,55 @@ class AudioPlayerService {
     }
   }
 
+  int? get currentTrackIndex => _engine.currentIndex;
+
+  Future<List<int>> _resolveFileDurationsMs(Audiobook audiobook) async {
+    if (audiobook.files.isEmpty) return const [];
+    final cacheKey = '${audiobook.path}|${audiobook.files.length}';
+    final cached = _fileDurationsCache[cacheKey];
+    if (cached != null) return cached;
+
+    final hasOneToOneChapters =
+        audiobook.chapters.length == audiobook.files.length;
+    final resolved = <int>[];
+    for (var i = 0; i < audiobook.files.length; i++) {
+      Duration? probed;
+      try {
+        probed = await fileDurationProbe(audiobook.files[i]);
+      } catch (_) {
+        probed = null;
+      }
+      if (probed != null && probed > Duration.zero) {
+        resolved.add(probed.inMilliseconds);
+      } else if (hasOneToOneChapters && i < audiobook.chapters.length) {
+        resolved.add((audiobook.chapters[i].duration * 1000).round());
+      } else {
+        resolved.add(0);
+      }
+    }
+
+    _fileDurationsCache[cacheKey] = resolved;
+    return resolved;
+  }
+
+  Future<int> resolveGlobalPositionMs(
+    Audiobook audiobook, {
+    int? trackIndex,
+    Duration? trackPosition,
+  }) async {
+    final localPosMs = (trackPosition ?? _engine.position).inMilliseconds;
+    if (audiobook.files.length <= 1) {
+      return localPosMs;
+    }
+    final fileDurationsMs = await _resolveFileDurationsMs(audiobook);
+    final activeIndex = trackIndex ?? _engine.currentIndex ?? 0;
+    var precedingMs = 0;
+    for (var i = 0; i < activeIndex && i < fileDurationsMs.length; i++) {
+      precedingMs += fileDurationsMs[i];
+    }
+    return precedingMs + localPosMs;
+  }
+
   int? getCurrentChapterIndex(Audiobook audiobook) {
     if (audiobook.files.length <= 1 && audiobook.chapters.isNotEmpty) {
       final chapter = resolveChapterForGlobalPosition(
@@ -384,23 +451,6 @@ class AudioPlayerService {
       return idx >= 0 ? idx : 0;
     }
     return _engine.currentIndex;
-  }
-
-  int getGlobalPositionMs(
-    Audiobook audiobook, {
-    int? trackIndex,
-    Duration? trackPosition,
-  }) {
-    final localPosMs = (trackPosition ?? _engine.position).inMilliseconds;
-    if (audiobook.files.length <= 1) {
-      return localPosMs;
-    }
-    final activeIndex = trackIndex ?? _engine.currentIndex ?? 0;
-    var precedingMs = 0;
-    for (var i = 0; i < activeIndex && i < audiobook.chapters.length; i++) {
-      precedingMs += (audiobook.chapters[i].duration * 1000).round();
-    }
-    return precedingMs + localPosMs;
   }
 
   Chapter? resolveChapterForGlobalPosition(
